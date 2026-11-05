@@ -1,0 +1,33 @@
+{
+    // ============================================================
+    // 【合成测试数据专用】流程自检配置 —— 结果没有任何意义，不要用来评价策略！
+    //
+    // 用法（不联网，见 README「用合成数据自检」）：
+    //   .venv/bin/python scripts/make_synthetic_data.py         # 先生成合成数据
+    //   bash scripts/synthetic_test.sh                         # 一键自检（回测 + 回撤检查 + 未来函数检查）
+    //   .venv/bin/python scripts/ft_offline.py backtesting --config configs/config.synthetic-test.json --strategy BigTrendShort
+    //
+    // 和真实 OKX 回测配置 (config.okx-backtest.json) 完全相同，只改了两处：
+    //   1. exportdirectory：回测结果单独存到 user_data/backtest_results/synthetic/，不和真实结果混在一起
+    //   2. 交易对：只用合成数据里有的 6 个币
+    // 数据目录：freqtrade 不认配置文件里的 "datadir"，只认命令行 --datadir。
+    //   scripts/ft_offline.py 会自动加上 --datadir user_data/data/okx-synthetic（合成数据），
+    //   所以不会碰真实数据目录 user_data/data/okx。请始终通过 ft_offline.py / synthetic_test.sh 使用本配置。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.okx-backtest.json"
+    ],
+    "bot_name": "binance-quant-SYNTHETIC-TEST",
+    "exportdirectory": "user_data/backtest_results/synthetic",
+    "exchange": {
+        "pair_whitelist": [
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "LINK/USDT:USDT"
+        ]
+    }
+}

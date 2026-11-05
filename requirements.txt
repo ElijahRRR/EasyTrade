@@ -1,0 +1,4 @@
+# freqtrade 版本固定（2026-10-30 发布的最新稳定版）。
+# 与 docker/docker-compose.yml 里的镜像 freqtradeorg/freqtrade:2026.10 保持一致，升级时两处一起改。
+# 需要 Python >= 3.12。
+freqtrade==2026.10

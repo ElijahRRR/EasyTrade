@@ -1,0 +1,92 @@
+{
+    // ============================================================
+    // 共享基础配置（不要单独使用）
+    // 被 config.okx-backtest.json / config.binance-futures.json
+    // 通过 "add_config_files" 引入。上层文件里写的同名字段会覆盖这里的值。
+    // freqtrade 的配置文件允许 // 注释和结尾逗号。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "bot_name": "binance-quant",
+
+    // 永续合约 + 逐仓。逐仓 = 每个仓位的保证金互相隔离，单仓爆仓不会拖累整个账户。
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    // 资金：USDT 本位。stake_amount = "unlimited" 表示把可用资金平均分给
+    // max_open_trades 个仓位；策略可以用 custom_stake_amount() 自己决定每笔开多少。
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "max_open_trades": 4,
+
+    // 默认模拟盘。实盘必须显式把 dry_run 改成 false（只在上层配置里改）。
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "cancel_open_orders_on_exit": false,
+
+    // 止损线和强平价之间留 5% 的安全垫（freqtrade 默认值）。
+    "liquidation_buffer": 0.05,
+
+    "unfilledtimeout": {
+        "entry": 10,
+        "exit": 10,
+        "exit_timeout_count": 0,
+        "unit": "minutes"
+    },
+
+    "order_types": {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "market",
+        "force_entry": "market",
+        "force_exit": "market",
+        "stoploss": "market",
+        "stoploss_on_exchange": false,
+        "stoploss_on_exchange_interval": 60
+    },
+    "order_time_in_force": {
+        "entry": "GTC",
+        "exit": "GTC"
+    },
+
+    // 用订单簿取价（币安合约必须这样设；OKX 也支持）。
+    "entry_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+    "exit_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1
+    },
+
+    // REST API / FreqUI 默认关闭，只在需要的配置里打开。
+    // 只监听本机 127.0.0.1，远程访问请用 SSH 隧道（见 README）。
+    // 账号、密码、密钥全部通过环境变量提供（见 .env.example），这里只放占位符：
+    // freqtrade 要求 jwt_secret_key 至少 32 个字符，否则配置校验不通过。
+    // scripts/preflight.sh 会在启动机器人/FreqUI 前检查这些值已被 .env 覆盖，没覆盖就拒绝启动。
+    "api_server": {
+        "enabled": false,
+        "listen_ip_address": "127.0.0.1",
+        "listen_port": 8080,
+        "verbosity": "error",
+        "enable_openapi": false,
+        "jwt_secret_key": "PLACEHOLDER-set-FREQTRADE__API_SERVER__JWT_SECRET_KEY-in-env",
+        "ws_token": "",
+        "CORS_origins": [],
+        "username": "",
+        "password": ""
+    },
+
+    "internals": {
+        "process_throttle_secs": 5
+    },
+    "dataformat_ohlcv": "feather",
+    "dataformat_trades": "feather"
+}

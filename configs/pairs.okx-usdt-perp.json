@@ -1,0 +1,35 @@
+{
+    // 配置片段，不单独使用（被入口配置的 add_config_files 引入）。
+    // OKX USDT 本位永续合约交易对（StaticPairList 用）。
+    // 选的是 OKX 和币安合约上都有、且名字相同的主流币，方便以后在币安数据上复核。
+    // 想按成交量重新生成：bash scripts/update_okx_pairs.sh （会覆盖本文件）
+    // 注意：按"今天"的成交量挑币回测历史，有幸存者偏差，结果会偏乐观。
+    "exchange": {
+        "pair_whitelist": [
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "ADA/USDT:USDT",
+            "AVAX/USDT:USDT",
+            "LINK/USDT:USDT",
+            "LTC/USDT:USDT",
+            "BCH/USDT:USDT",
+            "DOT/USDT:USDT",
+            "TRX/USDT:USDT",
+            "SUI/USDT:USDT",
+            "APT/USDT:USDT",
+            "ARB/USDT:USDT",
+            "OP/USDT:USDT",
+            "NEAR/USDT:USDT",
+            "FIL/USDT:USDT",
+            "ATOM/USDT:USDT",
+            "ETC/USDT:USDT"
+        ],
+        "pair_blacklist": [
+            // 稳定币对没有波动，不适合交易
+            "(USDC|FDUSD|TUSD|DAI|USDE)/.*"
+        ]
+    }
+}

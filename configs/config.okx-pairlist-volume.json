@@ -1,0 +1,38 @@
+{
+    // ============================================================
+    // 只用来"生成交易对列表"（scripts/update_okx_pairs.sh 调用 freqtrade test-pairlist）。
+    // 回测本身不支持 VolumePairList，所以先用它从 OKX 选出成交量最大的币，
+    // 再写成固定列表 configs/pairs.okx-usdt-perp.json 给回测用。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.okx-backtest.json"
+    ],
+    "pairlists": [
+        {
+            // 24 小时成交额（USDT）最大的前 40 个 USDT 永续
+            // OKX 合约的行情快照(ticker)里没有成交额，freqtrade 不允许直接按 ticker 排名，
+            // 所以改成"用最近 24 根 1 小时K线算成交额"（lookback 两项）。
+            // refresh_period 不能小于 1 根 lookback K线（1h = 3600 秒），否则 freqtrade 拒绝启动。
+            "method": "VolumePairList",
+            "number_assets": 40,
+            "sort_key": "quoteVolume",
+            "min_value": 0,
+            "lookback_timeframe": "1h",
+            "lookback_period": 24,
+            "refresh_period": 3600
+        },
+        {
+            // 至少上线 300 天，保证有足够的历史数据可回测。
+            // 300 是 OKX 合约一次最多能取的日线根数（freqtrade 要求 min_days_listed 不能超过它），
+            // 写更大的数（例如 365）freqtrade 会直接报错。
+            "method": "AgeFilter",
+            "min_days_listed": 300
+        },
+        {
+            // 过滤掉最小价格跳动太大的币（价格太低、精度差）
+            "method": "PriceFilter",
+            "low_price_ratio": 0.002
+        }
+    ]
+}
