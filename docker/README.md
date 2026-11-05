@@ -8,6 +8,7 @@
 | `make validate FT_RUNNER=docker` | 校验配置 |
 | `make download FT_RUNNER=docker` | 下载数据（在 `cli` 服务里跑一次性命令） |
 | `make backtest FT_RUNNER=docker` | 批量回测 |
+| `make docker-build` | 构建带中文 FreqUI 的镜像 `easytrade/freqtrade-zh`（`ui` / `freqtrade` 服务用，见下文） |
 | `make ui` | 启动 FreqUI 看回测结果（`127.0.0.1:8080`） |
 | `make up` / `make down` / `make logs` | 启动 / 停止 / 查看交易机器人（只能在币安允许的地区） |
 
@@ -20,13 +21,26 @@ docker compose -f docker/docker-compose.yml up -d freqtrade
 docker compose -f docker/docker-compose.yml --profile ui --profile trade down
 ```
 
+## 中文界面镜像（Dockerfile.freqtrade-zh）
+
+`ui` 和 `freqtrade` 不直接用官方镜像，而是用本地构建的 `easytrade/freqtrade-zh:2026.10-frequi-3.2.1`：
+
+1. 第一阶段 `node:22-bookworm`：执行 `frequi-zh/build.sh`，克隆官方 FreqUI 3.2.1、打 `frequi-zh/patches/` 里的汉化补丁、构建。
+2. 第二阶段 `freqtradeorg/freqtrade:2026.10`：用 `frequi-zh/install-into-venv.sh` 把构建结果装进
+   `/freqtrade/freqtrade/rpc/api_server/ui/installed/`（和 `freqtrade install-ui` 同一个目录、同样写 `.uiversion`）。
+
+- 构建上下文是项目根目录，但 `Dockerfile.freqtrade-zh.dockerignore` 只放进 frequi-zh 的脚本和补丁（约 0.5 MB），`.env` 和 `user_data/` 不会进镜像。
+- 这个镜像**只在本地构建，永远不会从 Docker Hub 拉取**（compose 里设置了 `pull_policy: never`；`docker compose pull` 也会跳过它）。本地没有这个镜像时，`docker compose up` 会自动构建。
+- 构建时需要访问 GitHub（克隆 FreqUI）和 npm 源（依赖）。改了补丁或版本后执行 `make docker-build`。
+- `cli` 服务不需要网页，仍然用官方镜像。详细说明见 [`frequi-zh/README.md`](../frequi-zh/README.md)。
+
 ## 三个服务
 
 | 服务 | 用途 | 端口 | 读取 .env |
 |---|---|---|---|
 | `cli` | 一次性命令：download-data、backtesting、list-data、show-config… | 无 | 否（不需要密钥） |
-| `ui` | FreqUI 网页（webserver 模式），查看回测结果 | `127.0.0.1:8080` | 是 |
-| `freqtrade` | 交易机器人，币安合约，默认 dry-run | `127.0.0.1:8080` | 是 |
+| `ui` | FreqUI 网页（webserver 模式，中文版），查看回测结果 | `127.0.0.1:8080` | 是 |
+| `freqtrade` | 交易机器人，币安合约，默认 dry-run（自带中文版 FreqUI） | `127.0.0.1:8080` | 是 |
 
 - 每个服务都设置了 profile，单独执行 `docker compose up -d` 不会启动任何东西，必须写服务名，避免误启动。
 - `ui` 和 `freqtrade` 启动前会先运行 `scripts/preflight.sh` 做安全检查（FreqUI 密码、JWT 密钥、Telegram、策略名、实盘 API Key）。

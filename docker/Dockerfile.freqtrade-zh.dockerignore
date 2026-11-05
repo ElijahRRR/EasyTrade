@@ -1,0 +1,6 @@
+# 只给 Dockerfile.freqtrade-zh 用（BuildKit 的 <Dockerfile>.dockerignore）：
+# 构建上下文是项目根目录，但只需要 frequi-zh 的脚本和补丁。.env、user_data、数据都不会送进构建。
+*
+!frequi-zh/build.sh
+!frequi-zh/install-into-venv.sh
+!frequi-zh/patches/
