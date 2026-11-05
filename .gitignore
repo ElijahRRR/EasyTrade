@@ -1,0 +1,47 @@
+# ---------- 密钥 / 私有配置（绝对不能提交） ----------
+.env
+.env.*
+!.env.example
+*.private.json
+config.private.json
+configs/*.private.json
+*.pem
+*.key
+
+# ---------- freqtrade 运行产物 ----------
+user_data/data/
+user_data/backtest_results/*
+!user_data/backtest_results/.gitkeep
+user_data/hyperopt_results/*
+!user_data/hyperopt_results/.gitkeep
+user_data/logs/*
+!user_data/logs/.gitkeep
+user_data/plot/*
+!user_data/plot/.gitkeep
+user_data/notebooks/*
+!user_data/notebooks/.gitkeep
+user_data/freqaimodels/
+user_data/*.sqlite
+user_data/*.sqlite-*
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+
+# 策略的 hyperopt 参数文件可以提交（与策略同名的 .json），不要忽略 user_data/strategies/
+
+# ---------- Python ----------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---------- 编辑器 / 系统 ----------
+.DS_Store
+.idea/
+.vscode/
+*.swp
