@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# ------------------------------------------------------------------
+# 公共函数（被其他 scripts/*.sh 引用，不要直接运行）
+# - 切换到项目根目录（所有路径都相对项目根目录，Docker 里同样适用）
+# - 决定用哪种方式运行 freqtrade：
+#     FT_RUNNER=venv    使用 .venv/bin/freqtrade（推荐 VPS / Linux）
+#     FT_RUNNER=docker  使用 docker compose run --rm cli（推荐 Mac）
+#     FT_RUNNER=path    使用 PATH 里的 freqtrade
+#     FT_RUNNER=synthetic  不联网，用 scripts/ft_offline.py 跑合成测试数据（只用于流程自检）
+#     不设置            自动检测：.venv > PATH > docker
+# 兼容 macOS 自带的 bash 3.2（不用关联数组、mapfile 等新语法）。
+# ------------------------------------------------------------------
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+COMPOSE_FILE="docker/docker-compose.yml"
+
+# docker compose 命令（.env 由 compose 文件里的 env_file 读取，这里不用管）
+compose_cmd() {
+    docker compose -f "$ROOT_DIR/$COMPOSE_FILE" "$@"
+}
+
+detect_runner() {
+    local runner="${FT_RUNNER:-auto}"
+    if [[ "$runner" == "auto" ]]; then
+        if [[ -x "$ROOT_DIR/.venv/bin/freqtrade" ]]; then
+            runner="venv"
+        elif command -v freqtrade >/dev/null 2>&1; then
+            runner="path"
+        elif command -v docker >/dev/null 2>&1; then
+            runner="docker"
+        else
+            echo "错误：找不到 freqtrade。请先按 README 安装（Docker 或 .venv）。" >&2
+            exit 1
+        fi
+    fi
+    FT_RUNNER_RESOLVED="$runner"
+}
+
+# 合成数据自检用的 python：.venv > Docker 镜像 > PATH 里的 python3（需要已装 freqtrade）
+_offline_py() {
+    if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+        "$ROOT_DIR/.venv/bin/python" "$@"
+    elif command -v docker >/dev/null 2>&1; then
+        compose_cmd run --rm -T --entrypoint python cli "$@"
+    else
+        python3 "$@"
+    fi
+}
+
+# 用法：ft <freqtrade 子命令> [参数...]
+ft() {
+    case "$FT_RUNNER_RESOLVED" in
+        venv)   "$ROOT_DIR/.venv/bin/freqtrade" "$@" ;;
+        path)   freqtrade "$@" ;;
+        synthetic) _offline_py scripts/ft_offline.py "$@" ;;
+        docker)
+            # 输出被重定向（写日志/管道）时不分配 TTY，否则 docker 会报错或混入控制字符
+            if [[ -t 0 && -t 1 ]]; then
+                compose_cmd run --rm cli "$@"
+            else
+                compose_cmd run --rm -T cli "$@"
+            fi ;;
+        *)      echo "错误：未知的 FT_RUNNER=$FT_RUNNER_RESOLVED（可选 venv / docker / path）" >&2; exit 1 ;;
+    esac
+}
+
+# 用法：py_ft <python 脚本> [参数...]  —— 需要 freqtrade 库的 Python 脚本用它运行
+py_ft() {
+    case "$FT_RUNNER_RESOLVED" in
+        venv)   "$ROOT_DIR/.venv/bin/python" "$@" ;;
+        path)   python3 "$@" ;;
+        synthetic) _offline_py "$@" ;;
+        docker)
+            if [[ -t 0 && -t 1 ]]; then
+                compose_cmd run --rm --entrypoint python cli "$@"
+            else
+                compose_cmd run --rm -T --entrypoint python cli "$@"
+            fi ;;
+    esac
+}
+
+detect_runner

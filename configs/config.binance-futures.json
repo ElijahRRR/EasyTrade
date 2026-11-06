@@ -1,0 +1,77 @@
+{
+    // ============================================================
+    // 第二/三阶段：币安 USDT-M 永续合约 模拟盘(dry-run) / 实盘配置
+    //
+    // !! 只能在币安允许访问的地区的服务器上运行。美国 IP 会被币安拒绝（HTTP 451），
+    // !! 不要用代理/VPN 绕过地区限制 —— 这违反币安条款，账户可能被冻结。
+    //
+    // 默认 dry_run = true（模拟盘，不会真下单）。改成实盘前请看 README「上实盘前检查清单」。
+    // API Key / Secret、FreqUI 账号密码、Telegram Token 全部来自环境变量（.env），不要写进本文件。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json",
+        "pairs.binance-usdt-perp.json",
+        "config.notify-zh.json"
+    ],
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "max_open_trades": 4,
+    "initial_state": "running",
+    "force_entry_enable": false,
+
+    "exchange": {
+        "name": "binance",
+        // 留空，用环境变量 FREQTRADE__EXCHANGE__KEY / FREQTRADE__EXCHANGE__SECRET 提供
+        "key": "",
+        "secret": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {}
+    },
+
+    "pairlists": [
+        { "method": "StaticPairList" }
+    ],
+
+    // 币安合约没有 ticker 价格，freqtrade 文档要求必须用订单簿取价
+    "entry_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+    "exit_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1
+    },
+
+    // 止损单直接挂在交易所（机器人掉线也能止损）。按标记价格(mark)触发，减少插针误触发。
+    "order_types": {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "market",
+        "force_entry": "market",
+        "force_exit": "market",
+        "stoploss": "market",
+        "stoploss_on_exchange": true,
+        "stoploss_on_exchange_interval": 60,
+        "stoploss_price_type": "mark"
+    },
+
+    // FreqUI / REST API：只监听 127.0.0.1:8080，远程用 SSH 隧道访问。
+    // 账号密码来自环境变量：
+    //   FREQTRADE__API_SERVER__USERNAME / FREQTRADE__API_SERVER__PASSWORD
+    //   FREQTRADE__API_SERVER__JWT_SECRET_KEY / FREQTRADE__API_SERVER__WS_TOKEN
+    // （Docker 里会自动改成监听 0.0.0.0，但宿主机端口只映射到 127.0.0.1）
+    "api_server": {
+        "enabled": true,
+        "listen_ip_address": "127.0.0.1",
+        "listen_port": 8080
+    }
+}

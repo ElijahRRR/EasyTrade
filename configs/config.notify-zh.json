@@ -1,0 +1,107 @@
+{
+    // ============================================================
+    // 中文 Telegram 通知（通过 freqtrade 的 webhook 功能直接调用 Telegram Bot API）
+    // 这是配置片段，不单独使用：由 config.binance-futures.json 的 add_config_files 引入。
+    //
+    // 原理：webhook 把下面每类事件的 "text" 模板填好数值，POST 到
+    //   https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>
+    // 这个 URL 不写在文件里，由 docker-compose 或 scripts/run_bot.sh 根据 .env 里的
+    // FREQTRADE__TELEGRAM__TOKEN / FREQTRADE__TELEGRAM__CHAT_ID 自动拼出来，
+    // 通过环境变量 FREQTRADE__WEBHOOK__URL 传入。
+    //
+    // 模板里 {xxx} 是 freqtrade 提供的占位符（见 freqtrade 文档 webhook-config.md）。
+    // 改完模板后运行：python scripts/test_notify.py  检查占位符是否都合法、预览效果。
+    //
+    // 限制：{direction} 只能输出 Long / Short，{exit_reason} 输出 roi / stop_loss 等英文代码，
+    //       {status} 是 freqtrade 自带的英文文字 —— 这些值本身无法在模板里翻译，
+    //       对照表见 README「通知里的英文代码」。时间均为 UTC（北京时间 = UTC + 8 小时）。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+
+    "webhook": {
+        // 默认关闭；在 .env 里设 FREQTRADE__WEBHOOK__ENABLED=true 打开
+        "enabled": false,
+        "url": "",
+        "format": "json",
+        "timeout": 10,
+        "retries": 3,
+        "retry_delay": 0.5,
+        // 允许策略用 self.dp.send_msg("中文内容") 主动发消息
+        "allow_custom_messages": true,
+
+        "entry": {
+            "text": "【开仓下单】{pair}\n方向：{direction}  杠杆：{leverage}x\n下单价：{order_rate:.8g}\n数量：{amount:.8g} {base_currency}\n保证金：{stake_amount:.2f} {stake_currency}\n订单类型：{order_type}\n入场标签：{enter_tag}\n交易ID：{trade_id}  交易所：{exchange}\n时间：{open_date:%Y-%m-%d %H:%M:%S} UTC"
+        },
+        "entry_fill": {
+            "text": "【开仓成交】{pair}\n方向：{direction}  杠杆：{leverage}x\n成交价：{open_rate:.8g}\n数量：{amount:.8g} {base_currency}\n保证金：{stake_amount:.2f} {stake_currency}\n入场标签：{enter_tag}\n交易ID：{trade_id}  交易所：{exchange}\n开仓时间：{open_date:%Y-%m-%d %H:%M:%S} UTC"
+        },
+        "entry_cancel": {
+            "text": "【开仓单已撤销】{pair}\n方向：{direction}  杠杆：{leverage}x\n挂单价：{order_rate:.8g}\n撤单原因：{reason}\n交易ID：{trade_id}  交易所：{exchange}"
+        },
+        "exit": {
+            "text": "【平仓下单】{pair}\n方向：{direction}  杠杆：{leverage}x\n离场原因：{exit_reason}\n开仓价：{open_rate:.8g}\n平仓价：{close_rate:.8g}\n预计盈亏：{profit_amount:.2f} {stake_currency}（{profit_ratio:.2%}）\n订单类型：{order_type}\n交易ID：{trade_id}  交易所：{exchange}"
+        },
+        "exit_fill": {
+            "text": "【平仓成交】{pair}\n方向：{direction}  杠杆：{leverage}x\n离场原因：{exit_reason}\n开仓价：{open_rate:.8g}\n成交价：{close_rate:.8g}\n本次盈亏：{profit_amount:.2f} {stake_currency}（{profit_ratio:.2%}）\n持仓：{open_date:%m-%d %H:%M} 至 {close_date:%m-%d %H:%M} UTC\n交易ID：{trade_id}  交易所：{exchange}"
+        },
+        "exit_cancel": {
+            "text": "【平仓单已撤销】{pair}\n方向：{direction}  杠杆：{leverage}x\n撤单原因：{reason}\n离场原因：{exit_reason}\n当前浮动盈亏：{profit_amount:.2f} {stake_currency}（{profit_ratio:.2%}）\n交易ID：{trade_id}  交易所：{exchange}"
+        },
+        // 下面 4 类和 strategy_msg 的内容是 freqtrade / 策略给的原文，长度不固定（程序异常会带完整报错堆栈）。
+        // Telegram 一条消息最多 4096 个字符，超过就整条发不出去（最重要的"程序异常、机器人已停止"通知就丢了）。
+        // freqtrade 不会自动截断，所以用 {status:.3500} 只取前 3500 个字符（Python 格式写法，多出的部分直接截掉）。
+        "status": {
+            "text": "【机器人状态】{status:.3500}"
+        },
+        "startup": {
+            "text": "【启动信息】\n{status:.3500}"
+        },
+        "warning": {
+            "text": "【警告】{status:.3500}"
+        },
+        "exception": {
+            "text": "【程序异常】（超过 3500 字会被截断，完整内容看机器人日志）\n{status:.3500}"
+        },
+        "protection_trigger": {
+            "text": "【保护机制触发】{pair} 暂停开仓\n原因：{reason}\n解除时间：{lock_end_time} UTC"
+        },
+        "protection_trigger_global": {
+            "text": "【全局保护触发】所有交易对暂停开仓\n原因：{reason}\n解除时间：{lock_end_time} UTC"
+        },
+        "liquidation_warning": {
+            "text": "【强平预警】{pair}\n方向：{direction}  杠杆：{leverage}x  模式：{margin_mode}\n当前价：{current_rate:.8g}\n强平止损价：{liquidation_price:.8g}\n剩余缓冲：{remaining_ratio:.0%}（预警阈值 {warn_ratio:.0%}）\n风险仓位/总仓位：{positions_at_risk}/{open_positions}\n交易ID：{trade_id}"
+        },
+        "strategy_msg": {
+            "text": "【策略消息】{msg:.3500}"
+        }
+    },
+
+    // freqtrade 自带的 Telegram 机器人：只用来接收 /status /profit /stop 等命令，
+    // 命令的回复是英文（freqtrade 不支持翻译）。
+    // 它自己的交易通知全部关掉，避免和上面的中文通知重复。
+    // 默认关闭；在 .env 里设 FREQTRADE__TELEGRAM__ENABLED=true 打开。
+    "telegram": {
+        "enabled": false,
+        "token": "",
+        "chat_id": "",
+        "allow_custom_messages": false,
+        "notification_settings": {
+            "status": "off",
+            "warning": "off",
+            "startup": "off",
+            "entry": "off",
+            "entry_fill": "off",
+            "entry_cancel": "off",
+            "exit": "off",
+            "exit_fill": "off",
+            "exit_cancel": "off",
+            "protection_trigger": "off",
+            "protection_trigger_global": "off",
+            "liquidation_warning": "off",
+            "strategy_msg": "off",
+            "show_candle": "off"
+        },
+        "reload": true,
+        "balance_dust_level": 0.01
+    }
+}

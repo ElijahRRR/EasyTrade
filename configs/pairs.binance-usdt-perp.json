@@ -1,0 +1,35 @@
+{
+    // 配置片段，不单独使用（被入口配置的 add_config_files 引入）。
+    // 币安 USDT-M 永续合约交易对（StaticPairList 用），与 OKX 回测列表保持一致，
+    // 这样在币安数据上复核时比较的是同一批币。
+    "exchange": {
+        "pair_whitelist": [
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "ADA/USDT:USDT",
+            "AVAX/USDT:USDT",
+            "LINK/USDT:USDT",
+            "LTC/USDT:USDT",
+            "BCH/USDT:USDT",
+            "DOT/USDT:USDT",
+            "TRX/USDT:USDT",
+            "SUI/USDT:USDT",
+            "APT/USDT:USDT",
+            "ARB/USDT:USDT",
+            "OP/USDT:USDT",
+            "NEAR/USDT:USDT",
+            "FIL/USDT:USDT",
+            "ATOM/USDT:USDT",
+            "ETC/USDT:USDT"
+        ],
+        "pair_blacklist": [
+            // freqtrade 官方建议币安拉黑 BNB（BNB 可能被用来抵扣手续费，导致数量对不上）
+            "BNB/.*",
+            // 稳定币对没有波动，不适合交易
+            "(USDC|FDUSD|TUSD|DAI|USDE)/.*"
+        ]
+    }
+}
