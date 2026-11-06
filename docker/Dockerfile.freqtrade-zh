@@ -1,0 +1,43 @@
+# ------------------------------------------------------------------
+# freqtrade 官方镜像 + FreqUI 中文版
+#
+# 第一阶段（node:22）：执行 frequi-zh/build.sh —— 克隆官方 FreqUI 固定版本、打汉化补丁、构建
+# 第二阶段（freqtradeorg/freqtrade:2026.10）：把构建结果装进 freqtrade 的界面目录
+#   （<freqtrade 包>/rpc/api_server/ui/installed/，和 `freqtrade install-ui` 装的位置相同）
+#
+# 构建上下文必须是项目根目录（docker-compose.yml 里已设置 context: ..）：
+#   docker compose -f docker/docker-compose.yml build ui freqtrade
+#   或：docker build -f docker/Dockerfile.freqtrade-zh -t easytrade/freqtrade-zh:2026.10-frequi-3.2.1 .
+# 同目录的 Dockerfile.freqtrade-zh.dockerignore 只把 frequi-zh 的脚本和补丁送进构建（不会带上 .env、数据）。
+#
+# 升级：freqtrade 版本改 FREQTRADE_IMAGE（同时改 requirements.txt）；
+#       FreqUI 版本改 FREQUI_TAG，并提供对应的 frequi-zh/patches/frequi-<版本>-zh-CN.patch。
+# ------------------------------------------------------------------
+ARG FREQTRADE_IMAGE=freqtradeorg/freqtrade:2026.10
+ARG NODE_IMAGE=node:22-bookworm
+
+# ---------- 第一阶段：构建 FreqUI 中文版 ----------
+FROM ${NODE_IMAGE} AS frequi-zh
+ARG FREQUI_TAG=3.2.1
+WORKDIR /src
+# pnpm 由 corepack 按 FreqUI package.json 里的 packageManager 字段自动下载
+RUN corepack enable
+COPY frequi-zh/build.sh frequi-zh/build.sh
+COPY frequi-zh/patches/ frequi-zh/patches/
+RUN FREQUI_TAG="${FREQUI_TAG}" \
+    WORK_DIR=/src/frequi \
+    OUT_DIR=/out/dist \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    bash frequi-zh/build.sh
+
+# ---------- 第二阶段：freqtrade + 中文界面 ----------
+FROM ${FREQTRADE_IMAGE}
+ARG FREQUI_TAG=3.2.1
+LABEL org.opencontainers.image.title="freqtrade + FreqUI zh-CN" \
+      org.opencontainers.image.description="freqtrade with the zh-CN localized FreqUI ${FREQUI_TAG} (EasyTrade)"
+# 以镜像默认用户（ftuser）运行：freqtrade 和依赖装在 ftuser 的 pip --user 目录里，
+# 界面目录 /freqtrade/freqtrade/rpc/api_server/ui/installed 也属于 ftuser。
+# 构建结果和安装脚本只临时挂载（BuildKit bind mount），不会留在镜像层里。
+RUN --mount=type=bind,from=frequi-zh,source=/out/dist,target=/tmp/frequi-zh-dist \
+    --mount=type=bind,source=frequi-zh/install-into-venv.sh,target=/tmp/install-into-venv.sh \
+    bash /tmp/install-into-venv.sh --python python3 --dist /tmp/frequi-zh-dist

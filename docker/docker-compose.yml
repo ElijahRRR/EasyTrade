@@ -3,6 +3,7 @@
 #
 # 请在【项目根目录】执行（推荐用 Makefile 的快捷命令，见 README）：
 #   docker compose -f docker/docker-compose.yml run --rm cli <freqtrade 子命令>   # 一次性命令：下载数据、回测…
+#   docker compose -f docker/docker-compose.yml build ui freqtrade # 构建带中文 FreqUI 的镜像（只在本地构建，不会拉取；本地没有时 up 也会自动构建）
 #   docker compose -f docker/docker-compose.yml up -d ui          # FreqUI 看回测结果（127.0.0.1:8080）
 #   docker compose -f docker/docker-compose.yml up -d freqtrade   # 机器人（币安合约，默认模拟盘）
 #   docker compose -f docker/docker-compose.yml logs -f freqtrade
@@ -10,6 +11,10 @@
 #
 # 三个服务都设置了 profiles，所以单独执行 "up -d" 不会误启动任何东西，必须写明服务名。
 # ui 和 freqtrade 都占用 8080 端口，不能同时运行。
+#
+# 中文界面：ui 和 freqtrade 用本地构建的镜像 easytrade/freqtrade-zh（官方 freqtrade 2026.10 + FreqUI 中文版，
+# 见 docker/Dockerfile.freqtrade-zh 和 frequi-zh/README.md）。cli 不需要网页，继续用官方镜像。
+# 改了补丁 / 升级版本后要重新构建：docker compose -f docker/docker-compose.yml build ui freqtrade
 #
 # 安全：
 #   * 端口只映射到宿主机 127.0.0.1:8080，公网无法访问；远程请用 SSH 隧道（见 README）。
@@ -31,6 +36,19 @@ x-freqtrade-base: &ft-base
     - "../configs:/freqtrade/configs:ro"
     - "../scripts:/freqtrade/scripts:ro"
 
+# 官方镜像 + FreqUI 中文版（ui / freqtrade 用）。版本号与上面的官方镜像、frequi-zh/patches 保持一致
+# pull_policy: never —— 这个镜像只在本地构建，永远不从 Docker Hub 拉取（否则 Compose 会先去 Docker Hub
+# 拉同名镜像，拉到别人发布的同名镜像就会带着 .env 里的密钥运行）。本地没有时 up 会自动构建。
+x-freqtrade-zh: &ft-zh
+  image: easytrade/freqtrade-zh:2026.10-frequi-3.2.1
+  pull_policy: never
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.freqtrade-zh
+    args:
+      FREQTRADE_IMAGE: freqtradeorg/freqtrade:2026.10
+      FREQUI_TAG: "3.2.1"
+
 # 只有 ui / freqtrade 读取 .env（cli 跑回测不需要任何密钥，也就不注入）
 x-env: &ft-env
   env_file:
@@ -46,7 +64,7 @@ services:
 
   # FreqUI 网页，加载 user_data/backtest_results 里的回测结果（第一阶段用，美国 VPS 可用）
   ui:
-    <<: [*ft-base, *ft-env]
+    <<: [*ft-zh, *ft-base, *ft-env]   # 前面的优先：image 用中文版镜像
     profiles: ["ui"]
     restart: unless-stopped
     ports:
@@ -65,7 +83,7 @@ services:
 
   # 交易机器人（币安 USDT-M 合约，默认 dry-run 模拟盘；策略名来自 .env 的 FREQTRADE__STRATEGY）
   freqtrade:
-    <<: [*ft-base, *ft-env]
+    <<: [*ft-zh, *ft-base, *ft-env]   # 前面的优先：image 用中文版镜像
     profiles: ["trade"]
     restart: unless-stopped
     ports:

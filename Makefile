@@ -11,7 +11,7 @@ ARGS ?=
 export FT_RUNNER
 
 .DEFAULT_GOAL := help
-.PHONY: help venv pull validate download backtest check synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps
+.PHONY: help venv pull validate download backtest check synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
 
 help:  ## 显示本帮助
 	@echo "可用命令（make <目标>）："
@@ -22,6 +22,8 @@ venv:  ## 创建 .venv 并安装固定版本的 freqtrade（需要 Python >= 3.1
 	.venv/bin/pip install --upgrade pip
 	.venv/bin/pip install -r requirements.txt
 	.venv/bin/freqtrade install-ui
+	@if [ -f frequi-zh/dist/index.html ]; then bash frequi-zh/install-into-venv.sh .venv; \
+	else echo "提示：上面装的是英文版 FreqUI。要中文界面：make zh-build && make zh-install"; fi
 
 pull:  ## 拉取 Docker 镜像
 	$(COMPOSE) pull cli
@@ -80,3 +82,12 @@ logs:  ## [Docker] 查看机器人日志
 
 ps:  ## [Docker] 查看容器状态
 	$(COMPOSE) --profile ui --profile trade ps
+
+zh-build:  ## 构建 FreqUI 中文版到 frequi-zh/dist（需要 git、Node.js >= 22；见 frequi-zh/README.md）
+	bash frequi-zh/build.sh
+
+zh-install:  ## [venv] 把 frequi-zh/dist 装进 .venv 里的 freqtrade（替换英文版 FreqUI）
+	bash frequi-zh/install-into-venv.sh .venv
+
+docker-build:  ## [Docker] 构建带中文 FreqUI 的镜像（ui / freqtrade 服务用；改补丁或升级后执行）
+	$(COMPOSE) --profile ui --profile trade build ui freqtrade

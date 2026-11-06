@@ -53,7 +53,13 @@ binance-quant/
 │   └── _common.sh                 ← 脚本公用函数
 ├── docker/
 │   ├── docker-compose.yml         ← VPS 和 Mac 通用
+│   ├── Dockerfile.freqtrade-zh    ← 官方 freqtrade 镜像 + FreqUI 中文版（ui / freqtrade 服务用）
 │   └── README.md                  ← Docker 补充说明（Mac / VPS）
+├── frequi-zh/                     ← FreqUI 中文版（汉化补丁 + 构建 / 安装脚本，见 frequi-zh/README.md）
+│   ├── patches/                   ← 汉化补丁（打在官方 FreqUI 3.2.1 上）
+│   ├── build.sh                   ← 克隆官方 FreqUI → 打补丁 → 构建到 frequi-zh/dist（不提交）
+│   ├── install-into-venv.sh       ← 把中文版装进 venv 里的 freqtrade（和 install-ui 效果相同）
+│   └── screenshots/               ← 中文界面截图
 ├── docs/
 │   └── strategies.md              ← 策略说明
 └── user_data/
@@ -86,12 +92,14 @@ cd binance-quant
 cp .env.example .env            # 回测阶段可以先不填
 make pull                       # 拉取 freqtradeorg/freqtrade:2026.10（官方镜像自带 arm64 版本）
 make validate FT_RUNNER=docker  # 校验配置
+make docker-build               # 构建带中文 FreqUI 的镜像（make ui / make up 用；node:22 和 freqtrade 镜像都有 arm64 版）
 ```
 
 3. 下载数据、回测（见下面「下载数据」「回测」两节），命令里加 `FT_RUNNER=docker`，或者不加也行（Mac 上没有 .venv 时会自动用 Docker）。
 
 > 不想用 Docker？Mac 自带的 python3 版本太低（freqtrade 需要 Python ≥ 3.12）。可以 `brew install python@3.12`，然后
-> `python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`。
+> `python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`；中文界面再 `brew install node@22` 后
+> `make zh-build && make zh-install`。
 
 更多 Mac 细节见 [`docker/README.md`](docker/README.md)。
 
@@ -102,7 +110,8 @@ make validate FT_RUNNER=docker  # 校验配置
 ```bash
 sudo apt update && sudo apt install -y python3-venv git make
 cd binance-quant
-make venv                       # 创建 .venv，安装 freqtrade==2026.10 和 FreqUI 网页
+make venv                       # 创建 .venv，安装 freqtrade==2026.10 和 FreqUI 网页（英文版）
+make zh-build && make zh-install   # 换成 FreqUI 中文版（需要 Node.js >= 22，见「FreqUI 中文界面」）
 cp .env.example .env
 make validate
 ```
@@ -116,6 +125,7 @@ cd binance-quant
 cp .env.example .env
 sudo chown -R 1000:1000 user_data                # 容器里的用户 uid 是 1000，需要写权限
 make pull && make validate FT_RUNNER=docker
+make docker-build                                # 构建带中文 FreqUI 的镜像（ui / freqtrade 服务用）
 ```
 
 ---
@@ -260,7 +270,7 @@ make guard-test                          # 只跑第 3 步：实盘保护逻辑�
 
 ## 用 FreqUI 网页看回测结果（含 SSH 隧道）
 
-FreqUI 是 freqtrade 自带的网页界面（目前是英文；汉化是以后单独做的任务）。
+FreqUI 是 freqtrade 自带的网页界面。本项目用的是**中文版**（默认中文，可切换英文），见下一节「FreqUI 中文界面」。
 
 1. 先在 `.env` 里填好 `FREQTRADE__API_SERVER__USERNAME`、`FREQTRADE__API_SERVER__PASSWORD`（≥10 位）、
    `FREQTRADE__API_SERVER__JWT_SECRET_KEY`、`FREQTRADE__API_SERVER__WS_TOKEN`（后两个用
@@ -273,11 +283,45 @@ ssh -L 8080:127.0.0.1:8080 你的用户名@你的VPS地址
 ```
 
 4. 保持这个 SSH 窗口不关，在 Mac 浏览器打开 <http://127.0.0.1:8080>，用 `.env` 里的用户名密码登录，
-   进入 **Backtest** 页面，在回测历史列表里打开结果，看资金曲线、每笔交易。
+   进入 **回测**（Backtest）页面 →「加载结果」，在回测历史列表里打开结果，再到「分析结果」「结果图表」看资金曲线、每笔交易。
    列表里只有 `user_data/backtest_results/` 这一层的文件：`make backtest` 会自动复制过去；
    自己用 `freqtrade backtesting --backtest-directory 别的目录` 跑的结果、以及合成数据的结果，这里看不到。
 
 `ui`（看回测）和 `freqtrade`（交易机器人）都用 8080 端口，同一台机器上不能同时开。
+
+---
+
+## FreqUI 中文界面
+
+![FreqUI 中文版仪表盘](frequi-zh/screenshots/dashboard.png)
+
+**怎么做的**：官方 FreqUI 只有英文。`frequi-zh/patches/frequi-3.2.1-zh-CN.patch` 是一个汉化补丁，
+打在官方固定版本 FreqUI **3.2.1** 上（freqtrade 2026.10 官方镜像自带的也是 3.2.1）：给 FreqUI 加上 vue-i18n，
+所有界面文字（菜单、表格列名、按钮、提示、图表图例和坐标轴、持仓时长等）都有中文和英文两套。
+术语按国内合约交易习惯统一：当前持仓、已平仓交易、投入金额、模拟盘 / 实盘、手动开仓、强制平仓、做多 / 做空、资金费、最大回撤、盈亏比……
+交易对、策略名、日志、平仓原因（`roi`、`stop_loss`…）等**机器人发来的内容不翻译**；发给机器人的数据和英文版完全一样。
+截图：[登录](frequi-zh/screenshots/login.png) · [交易 / 当前持仓](frequi-zh/screenshots/trade.png) ·
+[回测结果](frequi-zh/screenshots/backtest.png) · [图表](frequi-zh/screenshots/chart.png) · [设置](frequi-zh/screenshots/settings.png)。
+
+**怎么构建 / 安装**：
+
+| 方式 | 命令 | 说明 |
+|---|---|---|
+| Docker | `make docker-build`，然后照常 `make ui` / `make up` | `ui`、`freqtrade` 服务用本地构建的镜像 `easytrade/freqtrade-zh:2026.10-frequi-3.2.1`（`docker/Dockerfile.freqtrade-zh`：node:22 里打补丁构建，再装进官方 freqtrade 2026.10 镜像）。镜像只在本地构建、不会从 Docker Hub 拉取（`pull_policy: never`），本地没有时第一次 `make ui` 会自动构建；端口仍然只绑定 `127.0.0.1:8080` |
+| venv | `make zh-build`，然后 `make zh-install` | `zh-build` = `bash frequi-zh/build.sh`：克隆官方 FreqUI 3.2.1 → 打补丁 → `pnpm install --frozen-lockfile` → `pnpm build`，结果在 `frequi-zh/dist/`（不提交）。需要 git、Node.js ≥ 22。`zh-install` 把它装进 `.venv` 里 freqtrade 的界面目录，和 `freqtrade install-ui` 效果相同，不用重启，浏览器强制刷新即可 |
+
+注意：`freqtrade install-ui` 会换回官方英文版；`make venv` 发现 `frequi-zh/dist` 已存在时会自动装中文版。
+设置页顶部的「界面版本」以 `3.2.1-zh-CN` 开头就说明装的是中文版。
+
+**怎么切换语言**：右上角头像（`FT`）菜单 → **设置** →「界面设置」第一项 **语言 / Language** → 中文 / English，立即生效。
+选择保存在当前浏览器里；换浏览器或清除网站数据后回到默认的中文。
+
+**怎么升级 FreqUI**：FreqUI 出新版本时，在官方仓库的新 tag 上用 `git apply --3way` 重新打补丁，
+解决冲突（上游改过的组件：保留上游代码，再把新出现的英文换成翻译 key，并在 `src/locales/en/` 和 `src/locales/zh-CN/` 两边加上；
+`pnpm-lock.yaml` 冲突用上游的锁文件再 `pnpm install`），跑 `pnpm build`、`pnpm check-i18n`、官方 e2e 测试和截图脚本检查，
+最后用 `git diff --full-index <新tag>..zh-cn` 生成新补丁，并把 `frequi-zh/build.sh`、`docker/Dockerfile.freqtrade-zh`、
+`docker/docker-compose.yml` 里的 `3.2.1` 改成新版本（`build.sh` 里还要记下新 tag 的上游提交号，构建时会核对）。详细步骤见 [`frequi-zh/README.md`](frequi-zh/README.md) 的「升级 FreqUI」。
+只升级 freqtrade 不用动补丁，重新 `make docker-build` 即可。
 
 ---
 
@@ -398,7 +442,7 @@ make down        # 停止
 | 1.5 币安复核 | 用币安数据重新回测确认 | 币安允许地区的服务器 | 待开始 |
 | 2 模拟盘 + 提醒 | 币安 dry-run + 中文 Telegram 通知 | 币安允许地区的服务器 | 待开始 |
 | 3 自动实盘 | 小资金实盘，稳定后加资金 | 币安允许地区的服务器 | 待开始 |
-| 另 | FreqUI 网页汉化 | — | 以后单独做 |
+| 另 | FreqUI 网页汉化 | 所有环境 | **已完成**（见「FreqUI 中文界面」） |
 
 ---
 
@@ -408,4 +452,6 @@ make down        # 停止
 - **回测提示 `No data found`**：该周期/区间的数据没下载，先 `make download`；用 `--detail` 时，对应的小周期也要下载。
 - **启动提示「启动检查 错误」**：按提示在 `.env` 里补上对应变量。
 - **8080 端口被占用**：`ui` 和 `freqtrade` 不能同时运行，先 `make down`。
-- **升级 freqtrade**：同时改 `requirements.txt` 和 `docker/docker-compose.yml` 里的版本号，看官方更新日志后再升级，升级后重新跑一遍 `make validate` 和回测。
+- **升级 freqtrade**：同时改 `requirements.txt` 和 `docker/docker-compose.yml` 里的版本号（官方镜像和 `FREQTRADE_IMAGE` / 中文版镜像名），看官方更新日志后再升级，升级后 `make docker-build`，重新跑一遍 `make validate` 和回测。
+- **FreqUI 还是英文**：设置页看语言是否选了 English；浏览器强制刷新（Ctrl+Shift+R）；「界面版本」不是 `3.2.1-zh-CN` 开头的话重新 `make zh-install`（venv）或 `make docker-build`（Docker）。
+- **FreqUI 按钮图标是空白方块**：部分图标由浏览器从 `api.iconify.design` 加载（官方版也一样），访问不到时只是不显示图标，功能正常。

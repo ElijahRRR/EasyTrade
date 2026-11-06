@@ -45,3 +45,7 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# ---------- FreqUI 中文版构建产物（frequi-zh/build.sh 生成，可随时重新构建） ----------
+frequi-zh/dist/
+frequi-zh/.build/
