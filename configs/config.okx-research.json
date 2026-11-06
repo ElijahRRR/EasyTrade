@@ -1,0 +1,48 @@
+{
+    // ============================================================
+    // 第 2 步"策略研究"配置（scripts/research.sh / make research 使用）
+    //
+    // 和 config.okx-backtest.json 基本一样（OKX USDT 永续、逐仓、1000 USDT、只回测不下单），区别：
+    //   1. 交易对换成 pairs.okx-research.json（约 60 个）：币越多、样本越大，越不容易"只对那 20 个币有效"。
+    //   2. max_open_trades = 5：同时最多 5 个仓位。每笔开多少由策略自己按止损距离算
+    //      （easytrade_risk.py：打到止损约亏总资金 0.5%），stake_amount = "unlimited" 只是给策略一个上限。
+    //
+    // 研究脚本每次运行会在结果目录里生成 pairs.effective.json（去掉了历史数据不够的币），
+    // 用第二个 --config 叠加在本文件后面，所以真正参与回测的币以那个文件为准。
+    // 也可以单独用它回测：
+    //   .venv/bin/freqtrade backtesting --config configs/config.okx-research.json --strategy DonchianTrend
+    //
+    // OKX 的 mark 价格和资金费率历史只有最近约 3 个月，更早的资金费按 0 近似（同 config.okx-backtest.json）。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json",
+        "pairs.okx-research.json"
+    ],
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "max_open_trades": 5,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    "exchange": {
+        // 回测只用公开行情，不需要 API Key
+        "name": "okx",
+        "key": "",
+        "secret": "",
+        "password": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {}
+    },
+
+    "pairlists": [
+        { "method": "StaticPairList" }
+    ],
+
+    // 缺资金费率数据的时间段按"资金费为 0"计算（OKX 只能下载最近约 3 个月）
+    "futures_funding_rate": 0
+}

@@ -95,7 +95,8 @@ class DailyThreeSoldiersShort(RustPortMixin, IStrategy):
             for col in ("open", "high", "low", "close", "volume"):
                 dataframe[f"{k}_{col}"] = dataframe[col].shift(lag)
         dataframe["cum_pct"] = (dataframe["close"] - dataframe["b1_open"]) / dataframe["b1_open"] * 100.0
-        dataframe["notional_b3"] = dataframe["close"] * dataframe["volume"]
+        # 成交额 (USDT) = close x volume; OKX 永续的 volume 是币的数量 (不是张数), 见 docs/okx-volume-units.md
+        dataframe["notional_b3"] = self.quote_volume(dataframe, metadata["pair"])
         dataframe["atr14"] = talib.ATR(
             dataframe["high"].to_numpy(dtype="float64"),
             dataframe["low"].to_numpy(dtype="float64"),

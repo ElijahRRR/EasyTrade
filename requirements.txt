@@ -1,4 +1,5 @@
 # freqtrade 版本固定（2026-10-30 发布的最新稳定版）。
 # 与 docker/docker-compose.yml 里的镜像 freqtradeorg/freqtrade:2026.10 保持一致，升级时两处一起改。
+# [hyperopt] = 同时装上自动调参要用的依赖（optuna、filelock 等；官方 Docker 镜像也自带），make research 需要。
 # 需要 Python >= 3.12。
-freqtrade==2026.10
+freqtrade[hyperopt]==2026.10

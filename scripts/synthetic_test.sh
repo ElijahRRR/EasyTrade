@@ -14,7 +14,7 @@
 #      结果在 user_data/backtest_results/synthetic/run_<时间>/
 #   3. 实盘保护逻辑自检（scripts/check_live_guards.py：止损补救、只在信号刚收盘时入场）
 #      —— 这些只在实盘/模拟盘出现，回测测不到，所以单独测
-#   4. 对 3 个移植策略和 SampleFuturesSanity 跑 freqtrade 的 lookahead-analysis（未来函数检查）
+#   4. 对 3 个移植策略、SampleFuturesSanity 和第 2 步的 6 个新策略跑 freqtrade 的 lookahead-analysis（未来函数检查）
 #      和 recursive-analysis（指标预热长度是否够），日志和 CSV 也放在同一个结果目录
 #
 # !! 合成数据是随机生成的，回测收益/回撤数字没有任何意义；这里只看"每一步有没有报错"。
@@ -74,23 +74,38 @@ if [[ "$QUICK" == "no" ]]; then
     echo "=== 4/4 未来函数检查（lookahead-analysis）和预热检查（recursive-analysis）"
     OUT="${RUN_DIR:-user_data/backtest_results/synthetic}/analysis"
     mkdir -p "$OUT"
-    # 时间段按"合成数据截止到今天、共 730 天"计算（make_synthetic_data.py 的默认值）
-    days_ago() { python3 -c "import datetime as d, sys; print((d.date.today() - d.timedelta(days=int(sys.argv[1]))).strftime('%Y%m%d'))" "$1"; }
+    # 时间段从"合成数据的最后一天"往前倒推，并且写明结束日期（不用"到今天为止"的开放区间）：
+    # recursive-analysis 遇到开放区间会把"现在"当成结束时间，只在最后几根K线上比较指标；
+    # 合成数据生成一两天后，5m 策略最后 300 根K线（25 小时）里就已经没有数据了，会报 "No data found"。
+    DATA_END="$(py_ft -c "import pandas as pd, sys; d = pd.read_feather(sys.argv[1], columns=['date'])['date']; print((d.iloc[-1] + pd.Timedelta(days=1)).strftime('%Y%m%d'))" \
+        "$DATADIR/futures/BTC_USDT_USDT-1d-futures.feather" 2> /dev/null || true)"
+    [[ "$DATA_END" =~ ^[0-9]{8}$ ]] || DATA_END="$(date -u +%Y%m%d)"
+    echo "    合成数据截止 $DATA_END（下面的区间都从这一天往前倒推）"
+    days_ago() { python3 -c "import datetime as d, sys; print((d.datetime.strptime(sys.argv[2], '%Y%m%d') - d.timedelta(days=int(sys.argv[1]))).strftime('%Y%m%d'))" "$1" "$DATA_END"; }
 
     # 策略名  lookahead 起始(天前)  recursive 起始(天前)  recursive 预热K线数
     # 日线策略需要 300 根日线预热，所以从 420 天前开始；5m 策略只取最近几个月，否则太慢
+    # 第 2 步新策略：1h 策略取最近 150 天；FundingContrarian 只看最近 80 天（合成资金费率只有最近约 92 天，前面不开仓）
+    # TsmomTrend 从 300 天前开始：420 天起的窗口里有一笔交易碰上 freqtrade 回测结尾强制平仓单没成交、
+    #   被 lookahead-analysis 误报成"入场偏差"（没有任何指标列被标记；逐根截断数据重算信号也完全一致）
     PLAN="BigTrendShort:420:150:300,400,500
 DailyThreeSoldiersShort:600:150:30,100,300,500
 VolumeSpikeShort:150:35:300,600,1000
-SampleFuturesSanity:300:150:100,199,399"
+SampleFuturesSanity:300:150:100,199,399
+DonchianTrend:420:150:300,400,500
+TsmomTrend:300:150:200,300,500
+BigTrendBoth:420:150:300,400,500
+RangeMeanReversion:150:60:150,300,500
+VolSqueezeBreakout:150:60:150,300,500
+FundingContrarian:80:70:100,200,400"
 
     for line in $PLAN; do
         IFS=':' read -r STRAT LA_DAYS RA_DAYS RA_STARTUP <<< "$line"
         LA_LOG="$OUT/lookahead_${STRAT}.log"
         LA_CSV="$OUT/lookahead_${STRAT}.csv"
-        echo "--- lookahead-analysis $STRAT（$(days_ago "$LA_DAYS") 起）→ $LA_LOG"
+        echo "--- lookahead-analysis $STRAT（$(days_ago "$LA_DAYS") ~ $DATA_END）→ $LA_LOG"
         if ft lookahead-analysis --config "$CONFIG" --strategy "$STRAT" \
-            --timerange "$(days_ago "$LA_DAYS")-" \
+            --timerange "$(days_ago "$LA_DAYS")-$DATA_END" \
             --minimum-trade-amount 10 --targeted-trade-amount 20 \
             --lookahead-analysis-exportfilename "$LA_CSV" > "$LA_LOG" 2>&1; then
             # CSV 列：filename,strategy,has_bias,total_signals,biased_entry_signals,biased_exit_signals,biased_indicators
@@ -104,7 +119,7 @@ bad = int(r["biased_entry_signals"] or 0) + int(r["biased_exit_signals"] or 0)
 print(f"    信号数 {r['total_signals']}，用了未来数据的入场信号 {r['biased_entry_signals']}，离场信号 {r['biased_exit_signals']}")
 if r["biased_indicators"]:
     print(f"    被标记的指标列：{r['biased_indicators']}")
-    print("    （1d 策略的 mtf_* 列被标记是已知的误报，原因见 README「用合成数据自检」；只要上面两个信号数为 0 即可）")
+    print("    （1d 策略的 mtf_* 列及由它算出的列被标记是已知的误报，原因见 README「用合成数据自检」；只要上面两个信号数为 0 即可）")
 sys.exit(1 if bad else 0)
 PY
         else
@@ -116,7 +131,7 @@ PY
         echo "--- recursive-analysis $STRAT（预热 ${RA_STARTUP//,//} 根K线）→ $RA_LOG"
         # shellcheck disable=SC2086  # 故意按空格拆分
         if ft recursive-analysis --config "$CONFIG" --strategy "$STRAT" \
-            --timerange "$(days_ago "$RA_DAYS")-" --startup-candle ${RA_STARTUP//,/ } > "$RA_LOG" 2>&1; then
+            --timerange "$(days_ago "$RA_DAYS")-$DATA_END" --startup-candle ${RA_STARTUP//,/ } > "$RA_LOG" 2>&1; then
             sed -n '/┏/,/┘/p' "$RA_LOG" | sed 's/^/    /'
         else
             echo "    !! 运行失败，最后 10 行："; tail -n 10 "$RA_LOG" | sed 's/^/    /'

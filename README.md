@@ -5,7 +5,7 @@
 目标分三步走：**第一阶段 回测研究 → 第二阶段 模拟盘 + 中文 Telegram 提醒 → 第三阶段 全自动实盘**。
 现在处于第一阶段：因为研究服务器在美国（美国 IP 访问币安会被拒），回测先用 **OKX 的 USDT 永续合约数据**。
 
-> 策略说明见 [`docs/strategies.md`](docs/strategies.md)，策略代码在 `user_data/strategies/`。
+> 策略说明见 [`docs/strategies.md`](docs/strategies.md)（第 1 步的移植策略）和 [`docs/strategies-step2.md`](docs/strategies-step2.md)（第 2 步的新策略：趋势类 + 非趋势类），策略代码在 `user_data/strategies/`。
 
 ---
 
@@ -28,7 +28,7 @@ freqtrade 的配置文件里没有"最大杠杆"这个开关，杠杆只能在�
 binance-quant/
 ├── README.md                      ← 本文件
 ├── Makefile                       ← 常用命令快捷方式（make help 查看）
-├── requirements.txt               ← freqtrade==2026.10
+├── requirements.txt               ← freqtrade[hyperopt]==2026.10（含自动调参依赖）
 ├── .env.example                   ← 密钥模板，复制成 .env 再填（.env 不会提交到 git）
 ├── configs/
 │   ├── config.base.json           ← 共享基础设置（合约、逐仓、USDT、下单方式…）不单独使用
@@ -37,12 +37,18 @@ binance-quant/
 │   ├── config.okx-pairlist-volume.json ← 【入口】只用来按成交量生成交易对列表
 │   ├── config.notify-zh.json      ← 中文 Telegram 通知模板
 │   ├── config.synthetic-test.json ← 【入口】合成数据流程自检专用（结果没有意义）
+│   ├── config.okx-research.json   ← 【入口】第 2 步策略研究（make research 用）
 │   ├── pairs.okx-usdt-perp.json   ← OKX 回测用的交易对列表
+│   ├── pairs.okx-research.json    ← 第 2 步研究用的约 60 个交易对
 │   └── pairs.binance-usdt-perp.json ← 币安用的交易对列表（与 OKX 同一批币）
 ├── scripts/
 │   ├── download_okx_data.sh       ← 下载历史数据
 │   ├── backtest_all.sh            ← 批量回测（策略 × 周期）+ 自动回撤检查
 │   ├── check_drawdown.py          ← 8% 回撤 / 5x 杠杆检查，输出中文表格
+│   ├── research.sh                ← 第 2 步策略研究（训练段/样本外/走步验证 + 调参，make research）
+│   ├── research_report.py         ← research.sh 的辅助脚本（数据检查、区间切分、中文排名表）
+│   ├── check_live_guards.py       ← 实盘保护逻辑自检（make guard-test）
+│   ├── check_volume_units.py      ← K线成交量单位自检（OKX 永续 volume = 币的数量）
 │   ├── synthetic_test.sh          ← 用合成数据离线自检整条流程（不联网）
 │   ├── make_synthetic_data.py     ← 生成合成测试数据（不是真实行情）
 │   ├── ft_offline.py              ← 不联网运行 freqtrade 回测/分析（只配合合成数据）
@@ -61,7 +67,9 @@ binance-quant/
 │   ├── install-into-venv.sh       ← 把中文版装进 venv 里的 freqtrade（和 install-ui 效果相同）
 │   └── screenshots/               ← 中文界面截图
 ├── docs/
-│   └── strategies.md              ← 策略说明
+│   ├── strategies.md              ← 第 1 步策略说明
+│   ├── strategies-step2.md        ← 第 2 步新策略说明（趋势类 + 非趋势类 + 共用风控）
+│   └── okx-volume-units.md        ← OKX K线成交量单位说明
 └── user_data/
     ├── strategies/                ← 策略代码
     ├── data/                      ← 下载的行情数据（不提交）；okx-synthetic/ 是合成测试数据
@@ -225,13 +233,124 @@ make check ARGS="user_data/backtest_results/run_20251101_120000" # 检查一个�
 
 ---
 
+## 第 2 步：策略研究
+
+第 1 步的教训：6 月那几个"只做空"策略在 90 天里很好看，换到 2024-01 ~ 2026-11 的完整行情就不行了 —— 那是熊市带来的，不是策略本身的本事。
+第 2 步要找的是**在"没参与调参的那段行情"（样本外）上也赚钱**、账户回撤 ≤ 8% 的策略。`make research` 一条命令把整套检查跑完。
+
+参与研究的策略（每个策略的思路、参数、风险见 [`docs/strategies-step2.md`](docs/strategies-step2.md)）：
+趋势类 `DonchianTrend`、`TsmomTrend`、`BigTrendBoth`（和原版 `BigTrendShort` 对比），非趋势类 `RangeMeanReversion`、`VolSqueezeBreakout`、`FundingContrarian`。
+它们共用同一套风控（`user_data/strategies/easytrade_risk.py`）：杠杆 2 倍（代码写死不超过 5 倍）、每笔打到止损约亏总资金 0.5%、所有持仓合计最多亏 3%。
+
+### 在 VPS 上运行
+
+```bash
+cd binance-quant                   # 进入项目目录（按你实际放的位置）
+tmux new -s research              # 用 tmux：SSH 断开也不会停。重新连上后：tmux attach -t research
+make research                     # 下载/更新数据 → 默认参数回测 → 自动调参 → 中文排名表
+```
+
+用 venv 的话，调参要用到 hyperopt 依赖（Docker 镜像已自带；2026-11-06 以后 `make venv` 也会自动装）。以前建的 .venv 补装一次：`.venv/bin/pip install -r requirements.txt`。
+没装也能跑，脚本会提示并自动只跑默认参数。
+
+常用写法：
+
+```bash
+make research RESEARCH_HYPEROPT=0                          # 只用默认参数，不调参（快很多，建议先跑这个）
+make research ARGS="--strategies 'DonchianTrend TsmomTrend'"   # 只研究几个策略
+make research ARGS="--no-download"                         # 数据已经是最新的，不再下载
+make research RESEARCH_JOBS=1                              # 内存小（不到 3 GB）的 VPS：调参只开 1 个进程（慢，但不会爆内存）
+make research RESEARCH_HYPEROPT_TIMEOUT=1800               # 每次调参最多 30 分钟（默认 60 分钟，只是保险；正常按 60 轮跑满就停）
+make research-synthetic                                    # 合成数据离线跑一遍流程（几分钟；数字没有意义）
+bash scripts/research.sh --help                            # 全部参数
+```
+
+**要多久**（2 个 CPU 核、60 个币、约 2 年 10 个月数据的粗略估计）：第一次下载数据 20 ~ 60 分钟；
+只跑默认参数（`RESEARCH_HYPEROPT=0`）约 1 ~ 2 小时；带调参可能 4 ~ 12 小时，取决于有几个策略过了"训练段赚钱"这一关。
+每次调参跑 **60 轮**（前 30 轮随机抽样，后 30 轮在好的参数附近找；`RESEARCH_EPOCHS` 可改），2 核上一次约 10 ~ 30 分钟；
+另外有 60 分钟的保险时限，到时间还没跑满就用已经跑完的轮数里最好的一组 —— 这时跑了几轮取决于机器快慢，
+结果就不能完全复现了，表格说明里每个"优化参数"行都会写实际跑了几轮。CPU 核越多越快。
+
+**内存**：调参时每个进程都要把全部K线装一份（60 个币约 **1 GB / 个**），主进程再要 0.5 ~ 1 GB，**2 个进程约需 3 GB**。
+脚本默认按"CPU 核数"和"可用内存"自动决定开几个进程（开头会打印，例如"并行 2 个进程（自动：CPU 2 核，可用内存约 3.4 GB ……）"）；
+内存不够时子进程会被系统杀掉，脚本会自动改成 1 个进程重跑那一次。也可以自己指定：`RESEARCH_JOBS=1`。
+
+中途按 **Ctrl+C** 会停下来，并用已经跑完的部分生成报告。调参开始前会先打印一张"默认参数阶段"的表。
+
+### 它做了什么
+
+1. **数据**：用 `scripts/download_okx_data.sh` 下载 `configs/pairs.okx-research.json` 里约 60 个币的 1h / 4h / 1d K线
+   （合约模式自动带资金费率和标记价格），然后**自动去掉历史不够的币**（上线太晚、中途断了、缺周期），
+   实际用到的币写在结果目录的 `pairs.effective.json`，原因写在 `data_check.txt`。
+2. **切分区间**（所有策略用同一套日期）：
+   - **训练段** = 前约 2/3，**样本外** = 最后约 1/3。调参只用训练段，训练段调出的参数从没见过样本外这段。
+     注意：走步验证的后几折会用样本外这段时间重新调参（见下一条），所以"优化参数"那一行的样本外和走步结果
+     **不是两份独立证据**（同一段行情用了两次）；"默认参数"那一行不受影响。
+   - **走步验证**：把最近一半时间分成 4 折，每折先用它前面的一段（测试段的 2 倍长）调参，再测后面那段没见过的行情
+     （不调参时就直接用默认参数测这 4 段）；最后把 4 段测试结果按时间顺序拼成一条资金曲线。
+     它回答的是"如果每隔几个月重新调一次参数，实盘大概会怎样"，也能看出策略是不是只在某一段行情里赚钱。
+   - 日线策略要先用 300 根日线"预热"指标（EMA200 等），预热期不交易，所以它们的训练段实际从数据开始后约 10 个月才开始。
+   - 后面几段（样本外、走步各折）开始前，前面已经有历史数据了：脚本给每段**最多多加载 600 根K线**预热指标
+     （有多少给多少，`RESEARCH_WARMUP_CANDLES` 可改）。EMA200 这类指标只给 300 根时还带着约 37% 的"起点误差"，
+     各段的信号会随切分点变化；600 根时只剩约 2%，和"从头连续回测"、OKX 实盘（freqtrade 内存里保留约 600 根）基本一致。
+3. **默认参数**回测：每个策略的 训练段、样本外、走步各折。
+4. **调参**（hyperopt，`RESEARCH_HYPEROPT=1` 时）：只调入场/离场参数，只用训练窗口；
+   **默认参数在训练段都不赚钱、或者交易不到 20 笔的策略不调参**（不靠调参去"救"一个本来就没优势的策略；
+   交易太少时调参每一轮都会被判"交易数不够"）。走步每一折的训练窗口也先用默认参数回测一次，交易不到 20 笔的那一折不调参、用默认参数。
+   调出来的参数只保存在结果目录（`params/`），拿去测样本外；**不会改 `user_data/strategies/` 里的任何文件**。
+5. **评估**：和 `make check` 同一套算法（账户权益含浮亏、逐根K线），生成中文排名表。
+
+### 怎么看排名表
+
+跑完会打印一张表（同时存为 `summary.txt`，可以直接复制发给别人），每个策略一行"默认参数"，调过参的再多一行"优化参数"：
+
+| 列 | 含义 |
+|---|---|
+| 训练收益 / 训练PF / 训练回撤 | 训练段的总收益、盈亏因子（总盈利 ÷ 总亏损）、账户最大回撤（含浮亏） |
+| 样本外收益 / 样本外PF / 样本外回撤 / 样本外交易 | **最重要的几列**：训练段调出的参数没见过的最后 1/3 行情上的表现 |
+| 样本外扣资金费 | 样本外收益再扣掉**估算**的资金费（见下面"资金费"那条）。只用来提醒，不参与"通过"判定 |
+| 走步收益 / 走步回撤 | 走步验证拼起来的总收益和回撤。"优化参数"那一行的走步是每折重新调参后的结果 |
+| 主要原因 | 没通过的第一条原因；全部原因写在表格下面的"说明"里 |
+
+**"通过"要同时满足**（样本外和走步拼接结果都要）：回撤 ≤ 8%、总收益 > 0、盈亏因子 ≥ 1.2、交易 ≥ 30 笔、杠杆 ≤ 5x；
+另外训练段也要赚钱、回撤 ≤ 8%，样本外盈亏因子不低于训练段的 0.6 倍（调参后样本外"断崖式变差" = 过拟合）。
+
+看表的几条经验：
+
+- **两行都通过时用"默认参数"那一行**：自由度越少越不容易是巧合。只有"优化参数"通过、"默认参数"差很远的，要打个问号。
+- 说明里的"走步各折参数"：每折调出来的参数应该差不多；如果每折都跳到完全不同的值，说明是在拟合噪音。
+- 有 2 个以上策略通过时，表格下面有**组合检查**：把它们放进同一个 1000 USDT 账户一起跑（样本外区间），看合起来回撤是否还 ≤ 8%。
+- **资金费**：OKX 只能下载最近约 3 个月的资金费率，在那之前持仓的资金费 freqtrade 按 0 算（样本外大约有 3/4 的时间是这样），
+  拿得久的趋势策略会显得偏好。"样本外扣资金费"列按每 8 小时 0.01%（做多付、做空收）把这部分补算进去；
+  如果样本外只是小赚、扣完资金费就不赚了，就当它**还没证明能赚钱**。
+- **不要**为了让某一行变成"通过"反复改参数、改区间、重跑 —— 试的次数多了，总能"碰"出一个好看的结果，那也是过拟合。
+  通过的策略下一步是模拟盘，不是加仓。
+
+结果目录 `user_data/research/run_<时间>/`（合成数据在 `user_data/research/synthetic/`）：
+
+| 文件 | 内容 |
+|---|---|
+| `summary.txt` / `summary.csv` / `summary.json` | 排名表（csv 可用 Excel 打开） |
+| `data_check.txt` / `pairs.effective.json` | 数据检查结果、实际用到的交易对 |
+| `params/<策略>__main.json`、`__wf<折>.json` | 调出来的参数（freqtrade 参数文件格式） |
+| `bt/<策略>__<参数>__<区间>/` | 每次回测的 freqtrade 原始结果（`make check ARGS="<这个目录>"` 也能单独检查） |
+| `hyperopt/*.fthypt`、`logs/`、`research.log` | 调参原始记录、每一步的完整日志 |
+
+> 想把某个调出来的参数正式用上：把 `params/<策略>__main.json` 复制成 `user_data/strategies/<策略>.json`，
+> freqtrade 回测和实盘都会自动读取它（删掉这个文件就回到代码里的默认参数）。请先确认它在样本外和走步里都通过了。
+>
+> 技术说明：freqtrade 2026.10 的 hyperopt 多进程模式遇到"策略 + 风控 mixin"这种写法会报 `PicklingError`，
+> 研究脚本里已经自动绕过（见 `scripts/research_report.py` 的 `_patch_pickle_magic`），不用管。
+
+---
+
 ## 用合成数据自检（不联网）
 
 在连不上交易所的机器上（或者改完配置/策略想快速确认"有没有改坏"），可以用**随机生成的合成行情**把整条流程跑一遍：
 
 ```bash
-make synthetic-test                      # = bash scripts/synthetic_test.sh，约 4 分钟
-make synthetic-test ARGS="--quick"       # 跳过第 4 步的未来函数/预热检查（约 2 分钟）
+make synthetic-test                      # = bash scripts/synthetic_test.sh，约 7 分钟
+make synthetic-test ARGS="--quick"       # 跳过第 4 步的未来函数/预热检查（约 4 分钟）
 make synthetic-test ARGS="--regen"       # 重新生成合成数据
 make guard-test                          # 只跑第 3 步：实盘保护逻辑自检（几秒钟）
 ```
@@ -243,10 +362,11 @@ make guard-test                          # 只跑第 3 步：实盘保护逻辑�
    行情里有牛市/熊市/震荡/急跌/急涨切换、波动聚集、日内时段效应和不定期的"巨量砸盘"，保证每个策略都能产生交易。
 2. 用 `configs/config.synthetic-test.json` 批量回测全部策略 + 8% 回撤检查，结果放在 `user_data/backtest_results/synthetic/run_<时间>/`。
 3. `scripts/check_live_guards.py` 检查只在模拟盘/实盘才会出现、回测测不到的保护逻辑：
-   止损没能挂上而价格已越过时立即平仓（`rust_stop_breached` / `rust_stop_invalid`），
-   以及日线信号只在 K 线收盘后 10 分钟内入场（详见 `docs/strategies.md` 1.3 和第 8 节第 19 条）。
-4. 对 3 个移植策略和 SampleFuturesSanity 跑 freqtrade 的 `lookahead-analysis`（未来函数检查）和 `recursive-analysis`（指标预热检查），
-   日志和 CSV 放在同一目录的 `analysis/` 里。
+   止损没能挂上而价格已越过时立即平仓（`rust_stop_breached` / `rust_stop_invalid`，第 2 步新策略是 `et_stop_breached` / `et_stop_invalid`），
+   日线信号只在 K 线收盘后 10 分钟内入场（详见 `docs/strategies.md` 1.3 和第 8 节第 19 条），
+   K 线成交量单位（`scripts/check_volume_units.py`），以及第 2 步新策略的杠杆上限（永远 ≤ 5 倍）和按止损距离定仓。
+4. 对 3 个移植策略、SampleFuturesSanity 和第 2 步的 6 个新策略跑 freqtrade 的 `lookahead-analysis`（未来函数检查）和 `recursive-analysis`（指标预热检查），
+   日志和 CSV 放在同一目录的 `analysis/` 里。时间段从合成数据的最后一天往前倒推（不是从"今天"），所以数据生成几天后再跑也一样。
 
 **合成数据的收益、回撤、胜率没有任何意义**，只看"每一步有没有报错"。回撤检查"未通过"在合成数据上是正常的。
 
@@ -257,14 +377,17 @@ make guard-test                          # 只跑第 3 步：实盘保护逻辑�
   它只允许回测/分析类命令，而且数据目录必须有合成数据标记文件，不能拿来"假装"连上交易所。真实回测不需要它。
 - **为什么合成数据单独放在 `okx-synthetic`**：`freqtrade download-data` 会在已有文件末尾增量追加，
   如果合成数据和真实数据放在同一个目录，真假数据会混在一起。生成脚本也拒绝往 `user_data/data/okx` 写。
-- **lookahead-analysis 对两个日线策略报 `mtf_bias_4h`、`mtf_bias_1h` 等指标列"有偏差"是误报**：
+- **lookahead-analysis 对 BigTrendShort、DailyThreeSoldiersShort、BigTrendBoth 这几个日线策略报 `mtf_bias_4h`、`mtf_bias_1h` 等指标列（以及由它们算出的 `mtf_alignment_*`、`et_size_mult_*` 等列）"有偏差"是误报**：
   这个工具截断数据时会保留"刚开盘、还没收盘"的那根日线，而那一天的 4h/1h K 线只截到了开头几根，
   所以那一行的多周期偏向和完整数据不同。实际回测和实盘里，日线收盘后才会用这一行，那时当天的 4h/1h K 线都已收盘。
   判断标准是 `biased_entry_signals`（入场信号偏差）和 `biased_exit_signals`（离场信号偏差）都为 0。
   另外用"只保留当时已经收盘的 K 线重新计算"的方法单独验证过，三个策略抽查的行全部一致。
-- **recursive-analysis 里 `ema200` 有几个百分点的差异是正常的**：EMA200 要几百根 K 线才能"忘掉"起点，
-  `startup_candle_count = 300` 时还残留约 5%（0.99^300）的起点影响。回测从全部历史开始算，实盘只用最近约 600 根（OKX）/ 800 根（币安），
-  所以实盘和回测的 EMA200 会有很小的差别，个别贴近均线的信号可能不一样。这不是未来函数。
+- **recursive-analysis 里 `ema200`（以及 1d 策略的 `mtf_bias_1h` 等多周期列）在 300 根预热时有差异，这不是未来函数**：
+  talib 的 EMA200 从前 200 根的简单平均起步，300 根预热时只往后递推了 100 次，起点的误差还剩约 37%（(1 − 2/201)^100），
+  实测 EMA200 差约 6%；600 根时只剩约 2%。freqtrade 每次回测只在 `--timerange` 开始前多加载 `startup_candle_count`（300）根，
+  所以用 `make backtest --timerange` 单独回测"中间某一段"时，开头几个月个别贴近均线的信号会和"从头连续回测"不一样。
+  `make research` 已经处理了：样本外、走步各段开始前最多多给 600 根预热（见「第 2 步：策略研究」）。
+  实盘（OKX）freqtrade 一启动就拉约 600 根日线、之后一直保留约 600 根，和这个口径一致。
 
 ---
 

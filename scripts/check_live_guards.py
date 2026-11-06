@@ -10,6 +10,10 @@
   4. 正常情况（止损已经设好）不受影响：止损价被碰到时仍然是 freqtrade 的普通止损（stop_loss）。
   5. 日线信号只在信号K线收盘后 10 分钟内入场（ignore_buying_expired_candle_after = 600），
      和回测"下一根开盘入场、没名额就放弃"一致。
+  6. K线成交量单位：OKX 永续的 volume 是币的数量（不是张数），成交额 = 收盘价 x volume；
+     具体检查在 scripts/check_volume_units.py（也可以单独运行，见 docs/okx-volume-units.md）。
+  7. 第 2 步新策略共用的风控 easytrade_risk.py（EasyTradeRiskMixin）：杠杆永远 <= 5 倍、
+     信号收盘 10 分钟后不再入场、按止损距离定仓（打到止损约亏 0.5%）、止损挂不上 / 止损在错误一侧时立即平仓。
 
 用法：
   .venv/bin/python scripts/check_live_guards.py
@@ -34,14 +38,24 @@ from freqtrade.persistence import LocalTrade  # noqa: E402
 from freqtrade.persistence.custom_data import CustomDataWrapper  # noqa: E402
 from freqtrade.util import dt_now  # noqa: E402
 
+import easytrade_risk  # noqa: E402
+from BigTrendBoth import BigTrendBoth  # noqa: E402
 from BigTrendShort import BigTrendShort  # noqa: E402
 from DailyThreeSoldiersShort import DailyThreeSoldiersShort  # noqa: E402
+from DonchianTrend import DonchianTrend  # noqa: E402
+from FundingContrarian import FundingContrarian  # noqa: E402
+from RangeMeanReversion import RangeMeanReversion  # noqa: E402
+from TsmomTrend import TsmomTrend  # noqa: E402
+from VolSqueezeBreakout import VolSqueezeBreakout  # noqa: E402
 from VolumeSpikeShort import VolumeSpikeShort  # noqa: E402
 
+
+STEP2_STRATEGIES = (DonchianTrend, TsmomTrend, BigTrendBoth, RangeMeanReversion, VolSqueezeBreakout, FundingContrarian)
 
 CustomDataWrapper.use_db = False  # custom data 只放内存，不碰数据库
 # 策略在补救平仓时会写一条 WARNING 日志（实盘里有用），自检时不显示，免得和检查结果混在一起
 logging.getLogger("rust_port_common").setLevel(logging.ERROR)
+logging.getLogger("easytrade_risk").setLevel(logging.ERROR)
 FAILS: list[str] = []
 T0 = datetime(2026, 1, 2, tzinfo=UTC)
 _TRADE_ID = [0]
@@ -211,10 +225,121 @@ def test_expired_entry() -> None:
     check("日线信号收盘 8 小时后（例如机器人中途重启）：不再入场", sig is None, str(sig))
 
 
+def test_volume_units() -> None:
+    from check_volume_units import run_checks  # 同目录的 scripts/check_volume_units.py
+
+    print("4) K线成交量单位（OKX 永续 volume = 币的数量，不是张数）")
+    run_checks(check, prefix="4.")
+
+
+class _FakeDP:
+    """只提供 EasyTradeRiskMixin 用到的两样：运行模式、分析好的 K 线（最后一行 = 最近一根已收盘 K 线）。"""
+
+    runmode = RunMode.DRY_RUN
+
+    def __init__(self, df: pd.DataFrame) -> None:
+        self.df = df
+
+    def get_analyzed_dataframe(self, pair: str, timeframe: str):
+        return self.df, self.df["date"].iloc[-1]
+
+
+class _FakeWallets:
+    def get_total_stake_amount(self) -> float:
+        return 1000.0
+
+
+def _risk_strategy(signal_row: dict) -> DonchianTrend:
+    """DonchianTrend（日线）+ 一根信号 K 线（开仓前一天）。ATR 2、离场通道 90/110 -> 做多初始止损 = 100 - 2 x 2 = 96。"""
+    s = make_strategy(DonchianTrend)
+    row = {"date": pd.Timestamp(T0 - timedelta(days=1)), "open": 99.0, "high": 101.0, "low": 98.0, "close": 100.0,
+           "volume": 1.0, "atr": 2.0, "dc_exit_low": 90.0, "dc_exit_high": 110.0}
+    row.update(signal_row)
+    s.dp = _FakeDP(pd.DataFrame([row]))
+    s.wallets = _FakeWallets()
+    return s
+
+
+def make_long(open_rate: float = 100.0, leverage: float = 2.0) -> LocalTrade:
+    _TRADE_ID[0] += 1
+    return LocalTrade(
+        id=_TRADE_ID[0], pair=f"E{_TRADE_ID[0]}/USDT:USDT", is_short=False, leverage=leverage,
+        open_rate=open_rate, amount=1.0, stake_amount=open_rate / leverage, open_date=T0,
+        fee_open=0.0005, fee_close=0.0005, exchange="okx", trading_mode="futures", is_open=True,
+    )
+
+
+def test_step2_risk() -> None:
+    print("5) 第 2 步新策略共用风控（easytrade_risk.py）")
+    from freqtrade.persistence import Trade
+
+    use_db = Trade.use_db
+    Trade.use_db = False  # 组合热度只看内存里的持仓（这里一笔都没有），不碰数据库
+    try:
+        for cls in STEP2_STRATEGIES:
+            s = make_strategy(cls)
+            lev = s.leverage("BTC/USDT:USDT", T0, 100.0, 1.0, 125.0, None, "long")
+            s.max_leverage_param = 10.0  # 就算有人把参数改成 10 倍
+            lev_hi = s.leverage("BTC/USDT:USDT", T0, 100.0, 1.0, 125.0, None, "short")
+            lev_ex = s.leverage("BTC/USDT:USDT", T0, 100.0, 1.0, 3.0, None, "short")
+            check(f"{cls.__name__}：默认杠杆 2 倍；参数改成 10 倍也只有 5 倍；交易所只允许 3 倍时用 3 倍",
+                  lev == 2.0 and lev_hi == easytrade_risk.HARD_MAX_LEVERAGE == 5.0 and lev_ex == 3.0,
+                  f"{lev:g} / {lev_hi:g} / {lev_ex:g}")
+            check(f"{cls.__name__}.ignore_buying_expired_candle_after = 600",
+                  s.ignore_buying_expired_candle_after == 600, str(s.ignore_buying_expired_candle_after))
+
+        # 5a 按止损距离定仓：止损 96（距离 4%）-> 名义仓位 = 1000 x 0.5% / (4% + 0.2% 成本缓冲) = 119.05，2 倍杠杆保证金 59.52
+        s = _risk_strategy({})
+        stake = s.custom_stake_amount("E/USDT:USDT", T0, 100.0, 237.5, 5.0, 950.0, 2.0, None, "long")
+        loss_at_stop = stake * 2.0 * 0.04
+        check("定仓：止损距离 4% 时保证金约 59.5 USDT（2 倍杠杆），打到止损约亏 4.8 USDT（总资金 0.5% 以内）",
+              abs(stake - 1000 * 0.005 / 0.042 / 2.0) < 1e-6 and loss_at_stop <= 5.0, f"保证金 {stake:.2f}，亏 {loss_at_stop:.2f}")
+        s_bad = _risk_strategy({"atr": float("nan")})
+        stake_bad = s_bad.custom_stake_amount("E/USDT:USDT", T0, 100.0, 237.5, 5.0, 950.0, 2.0, None, "long")
+        check("定仓：算不出止损（没有 ATR）时不开仓（返回 0，不会满仓兜底）", stake_bad == 0.0, f"{stake_bad}")
+
+        # 5b 正常：成交在 100.2，止损设到 96；之后碰到 96 是 freqtrade 普通止损
+        tr = make_long()
+        after_fill(s, tr, 100.2)
+        check("正常成交：止损设到 入场价 - 2 x ATR = 96", abs(tr.stop_loss - 96.0) < 1e-6, f"{tr.stop_loss:.6g}")
+        check("正常成交：价格 99（没碰止损）不平仓", exits(s, tr, 99.0) == [])
+        found = exits(s, tr, 95.9)
+        check("正常成交：价格 95.9 碰到止损 → freqtrade 普通止损 stop_loss（不是补救单）",
+              bool(found) and found[0].exit_type == ExitType.STOP_LOSS, first_reason(found))
+
+        # 5c 止损补救：成交回调时价格已经跌到 95.5（越过 96），freqtrade 设不上这个止损 -> 立即平仓
+        s = _risk_strategy({})
+        tr = make_long()
+        after_fill(s, tr, 95.5)
+        found = exits(s, tr, 95.5)
+        check("成交时价格已越过止损：下一轮立即平仓，离场原因 et_stop_breached",
+              bool(found) and found[0].exit_reason == easytrade_risk.EXIT_STOP_BREACHED, first_reason(found))
+        price = s.custom_exit_price(pair=tr.pair, trade=tr, current_time=T0, proposed_rate=95.5,
+                                    current_profit=0.0, exit_tag=easytrade_risk.EXIT_STOP_BREACHED)
+        check("补救单挂在盘口下方 0.5%（做多平仓=卖出，能立即成交）", abs(price - 95.5 * 0.995) < 1e-9, f"{price:.6g}")
+        price = s.custom_exit_price(pair=tr.pair, trade=tr, current_time=T0, proposed_rate=101.0,
+                                    current_profit=0.0, exit_tag=easytrade_risk.EXIT_TIMEOUT)
+        check("et_timeout 的平仓价不变", price == 101.0, f"{price}")
+
+        # 5d 止损在错误一侧：信号 K 线的离场通道下轨 101 已经在入场价 100 上方 -> 立即平仓, 先挂最远止损当保险
+        s = _risk_strategy({"dc_exit_low": 101.0})
+        tr = make_long()
+        after_fill(s, tr, 100.0)
+        found = exits(s, tr, 100.0)
+        check("按实际成交价算不出有效止损：立即平仓，离场原因 et_stop_invalid",
+              bool(found) and found[0].exit_reason == easytrade_risk.EXIT_STOP_INVALID, first_reason(found))
+        check("平掉之前先挂着最远止损当保险（入场价 -25% = 75）", 74.9 < (tr.stop_loss or 0) < 75.1,
+              f"{tr.stop_loss}")
+    finally:
+        Trade.use_db = use_db
+
+
 def main() -> int:
     test_stop_rescue()
     test_stop_invalid()
     test_expired_entry()
+    test_volume_units()
+    test_step2_risk()
     print()
     if FAILS:
         print(f"有 {len(FAILS)} 项未通过：")

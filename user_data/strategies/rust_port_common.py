@@ -114,6 +114,46 @@ def cooldown_mask(events: np.ndarray, dates: pd.Series, cooldown_seconds: int) -
     return allowed
 
 
+def valid_contract_size(value: Any) -> float | None:
+    """合约面值 (每张合约 = 多少个币) 转成正数; 缺失/非数字/<=0 返回 None。
+
+    ccxt 的 markets 里 contractSize 有时是字符串 (freqtrade exchange.get_contract_size 里也是 float() 一下)。
+    """
+    try:
+        cs = float(value)
+    except (TypeError, ValueError):
+        return None
+    return cs if math.isfinite(cs) and cs > 0 else None
+
+
+def ohlcv_quote_volume(
+    df: DataFrame,
+    *,
+    volume_in_contracts: bool = False,
+    contract_size: Any = None,
+    volume_currency: str = "base",
+) -> pd.Series:
+    """K 线成交额 (USDT) —— 规则和 freqtrade 自己的 VolumePairList 完全一样。
+
+    freqtrade plugins/pairlist/VolumePairList.py:
+      - 交易所选项 ohlcv_volume_currency == "quote": volume 本身就是成交额
+      - 否则 volume 是 "基础币数量" -> 成交额 = 价格 x volume
+      - 交易所选项 ohlcv_volume_in_contracts == True (目前只有 Gate): volume 是张数, 再乘 contractSize
+    OKX / 币安 U 本位: 两个选项都是默认值 -> 成交额 = close x volume, 不乘 contractSize
+    (ccxt okx 永续取的是 volCcy = 币的数量, 见 docs/okx-volume-units.md)。
+
+    volume 是张数却拿不到有效 contractSize 时返回 NaN (宁可这根 K 线不出信号, 也不用错的单位)。
+    """
+    if str(volume_currency).lower() == "quote":
+        return df["volume"].astype("float64")
+    if not volume_in_contracts:
+        return df["close"] * df["volume"]  # 与移植前的写法逐位相同
+    cs = valid_contract_size(contract_size)
+    if cs is None:
+        return pd.Series(np.nan, index=df.index, dtype="float64")
+    return df["close"] * (df["volume"] * cs)
+
+
 def to_epoch_seconds(dates: pd.Series) -> np.ndarray:
     """把 freqtrade 的 date 列转成整数秒 (不依赖 pandas 的 ns/ms 精度设置)。"""
     return ((pd.to_datetime(dates, utc=True) - _EPOCH) // pd.Timedelta(seconds=1)).to_numpy(
@@ -401,6 +441,56 @@ class RustPortMixin:
                 sev = SEVERITY_NAME.get(int(severity[i]), "LOW").lower()
                 tags_arr[i] = f"{base}_{tag_extra[i]}_{sev}" if tag_extra is not None else f"{base}_{sev}"
         dataframe["enter_tag"] = pd.Series(tags_arr, index=dataframe.index, dtype=object)
+
+    # ======================================================================
+    # K 线成交量单位 (docs/okx-volume-units.md)
+    # ======================================================================
+
+    def ohlcv_volume_units(self, pair: str) -> tuple[bool, float | None, str]:
+        """返回 (volume 是否为张数, 合约面值, volume 计价)。
+
+        直接读 freqtrade 交易所对象的选项 (和 VolumePairList 用的是同一份, 也包含配置里
+        exchange._ft_has_params 的覆盖): ohlcv_volume_in_contracts / ohlcv_volume_currency。
+        OKX: (False, None, "base") —— volume 已经是币的数量, 不需要合约面值。
+        没有交易所对象时 (自检脚本、单独实例化) 按 freqtrade 默认值处理, 也是 (False, None, "base")。
+        """
+        exchange = getattr(self.dp, "_exchange", None) if self.dp is not None else None
+        if exchange is None:
+            return False, None, "base"
+        try:
+            in_contracts = bool(exchange.get_option("ohlcv_volume_in_contracts", False))
+            currency = str(exchange.get_option("ohlcv_volume_currency", "base") or "base")
+        except Exception as exc:  # 理论上不会发生; 出错就按 freqtrade 默认值
+            logger.warning("%s 读取交易所成交量单位失败, 按默认 (币的数量) 处理: %s", self.rust_name, exc)
+            return False, None, "base"
+        contract_size = None
+        if in_contracts:
+            try:
+                market = self.dp.market(pair) or {}
+                contract_size = valid_contract_size(market.get("contractSize"))
+            except Exception:
+                contract_size = None
+        return in_contracts, contract_size, currency
+
+    def quote_volume(self, dataframe: DataFrame, pair: str) -> pd.Series:
+        """这根 K 线的成交额 (USDT)。策略里所有 "成交额 / 流动性门槛" 都用它, 不要直接写 close x volume。"""
+        in_contracts, contract_size, currency = self.ohlcv_volume_units(pair)
+        if in_contracts and contract_size is None and currency.lower() != "quote":
+            warned = self.__dict__.setdefault("_volume_unit_warned", set())
+            if pair not in warned:
+                warned.add(pair)
+                logger.error(
+                    "%s %s: 交易所的K线成交量是张数, 但拿不到合约面值 contractSize, "
+                    "成交额无法换算, 这个币不会出信号",
+                    self.rust_name,
+                    pair,
+                )
+        return ohlcv_quote_volume(
+            dataframe,
+            volume_in_contracts=in_contracts,
+            contract_size=contract_size,
+            volume_currency=currency,
+        )
 
     # ======================================================================
     # 止损价 (绝对价格)

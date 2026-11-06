@@ -21,6 +21,9 @@ user_data/plot/*
 user_data/notebooks/*
 !user_data/notebooks/.gitkeep
 user_data/freqaimodels/
+# 第 2 步策略研究（scripts/research.sh）的结果目录，和 hyperopt 的锁文件
+user_data/research/
+user_data/hyperopt.lock
 user_data/*.sqlite
 user_data/*.sqlite-*
 *.sqlite
@@ -31,7 +34,7 @@ user_data/*.sqlite-*
 # 策略的 hyperopt 参数文件可以提交（与策略同名的 .json），不要忽略 user_data/strategies/
 
 # ---------- Python ----------
-.venv/
+.venv
 venv/
 __pycache__/
 *.py[cod]
