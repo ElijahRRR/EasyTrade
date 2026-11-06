@@ -1,0 +1,101 @@
+{
+    // 配置片段，不单独使用（被研究用的入口配置通过 add_config_files 引入，或用 --config 叠加）。
+    // 第二步"样本外研究"用的 OKX USDT 本位永续交易对，共 60 个（StaticPairList 用）。
+    //
+    // 怎么选的（2026-11-06，开发机连不上 OKX，凭公开信息手工挑，没有用接口核对）：
+    //   - 只要 OKX 上大约 2024-01 以前就有 USDT 永续的老牌大币，前 20 个和 pairs.okx-usdt-perp.json 相同；
+    //   - 币安 U 本位上也有、而且名字相同，方便以后用币安数据复核。
+    //     因此没收 PEPE、SHIB、BONK、FLOKI：它们在币安叫 1000PEPE 等，名字对不上；
+    //   - 不收稳定币（USDC、FDUSD、DAI、USDE、USTC 等）和杠杆代币；
+    //     也不收黄金币（PAXG、XAUT）这类和加密行情无关的币；
+    //   - 不收 2024 年以后改过名或换过代币的币（MATIC→POL、FTM→S、RNDR→RENDER、EOS→A、MKR→SKY 等），
+    //     因为它们的历史数据会断开。
+    //
+    // 数据不够怎么办：有些币可能已经下架，或者 2024-01 时还没有上线，OKX 那边数据会不全。
+    //   freqtrade 会自动去掉已下架的币（启动日志里有 "Removing it from whitelist" 提示）；
+    //   研究脚本也会自动丢掉历史数据不够（覆盖不了评估区间）的币。不用手工删。
+    //
+    // 想按 OKX 当前成交额重新选：bash scripts/update_okx_pairs.sh 60
+    //   （需要能连上 OKX，美国 VPS 可以。它写的是 configs/pairs.okx-usdt-perp.json，
+    //    想用新结果的话，把列表复制到本文件。）
+    //
+    // !!! 幸存者偏差：这份名单是站在 2026 年挑的"现在还活着、还很大"的币。
+    //     2024 年那些后来跌没了、被下架的币不在里面，所以回测结果会偏乐观。
+    //     做空策略尤其要注意：最适合做空的往往正是后来消失的币，它们恰好被排除掉了。
+    //     评价策略时以样本外结果为准，不要为了这份名单反复调参数。
+    "exchange": {
+        "pair_whitelist": [
+            // ---- 主流币（和 pairs.okx-usdt-perp.json 相同的 20 个）----
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "ADA/USDT:USDT",
+            "AVAX/USDT:USDT",
+            "LINK/USDT:USDT",
+            "LTC/USDT:USDT",
+            "BCH/USDT:USDT",
+            "DOT/USDT:USDT",
+            "TRX/USDT:USDT",
+            "SUI/USDT:USDT",
+            "APT/USDT:USDT",
+            "ARB/USDT:USDT",
+            "OP/USDT:USDT",
+            "NEAR/USDT:USDT",
+            "FIL/USDT:USDT",
+            "ATOM/USDT:USDT",
+            "ETC/USDT:USDT",
+            // ---- 公链 / 基础设施 ----
+            "INJ/USDT:USDT",
+            "TIA/USDT:USDT",
+            "STX/USDT:USDT",
+            "IMX/USDT:USDT",
+            "XLM/USDT:USDT",
+            "ALGO/USDT:USDT",
+            "ICP/USDT:USDT",
+            "EGLD/USDT:USDT",
+            "THETA/USDT:USDT",
+            "XTZ/USDT:USDT",
+            "AR/USDT:USDT",
+            "CFX/USDT:USDT",
+            "DASH/USDT:USDT",
+            "ZEC/USDT:USDT",
+            // ---- DeFi ----
+            "UNI/USDT:USDT",
+            "AAVE/USDT:USDT",
+            "CRV/USDT:USDT",
+            "LDO/USDT:USDT",
+            "COMP/USDT:USDT",
+            "SNX/USDT:USDT",
+            "SUSHI/USDT:USDT",
+            "1INCH/USDT:USDT",
+            "YFI/USDT:USDT",
+            "DYDX/USDT:USDT",
+            "ENS/USDT:USDT",
+            // ---- AI / 数据 ----
+            "WLD/USDT:USDT",
+            "FET/USDT:USDT",
+            "GRT/USDT:USDT",
+            "PYTH/USDT:USDT",
+            // ---- 游戏 / NFT / 社区币 ----
+            "SAND/USDT:USDT",
+            "MANA/USDT:USDT",
+            "AXS/USDT:USDT",
+            "APE/USDT:USDT",
+            "GALA/USDT:USDT",
+            "GMT/USDT:USDT",
+            "BLUR/USDT:USDT",
+            "PEOPLE/USDT:USDT",
+            "ORDI/USDT:USDT",
+            "MASK/USDT:USDT",
+            "TRB/USDT:USDT"
+        ],
+        "pair_blacklist": [
+            // 稳定币、黄金币：没有正常的波动，或者跟加密行情无关
+            // （OKX 永续没有杠杆代币，不用写；也别写 ".*UP/.*" 这种规则，会误伤 JUP 这类正常币）
+            "(USDC|FDUSD|TUSD|DAI|USDE|USDD|PYUSD|USTC|BUSD)/.*",
+            "(PAXG|XAUT)/.*"
+        ]
+    }
+}

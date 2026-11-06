@@ -11,7 +11,7 @@ ARGS ?=
 export FT_RUNNER
 
 .DEFAULT_GOAL := help
-.PHONY: help venv pull validate download backtest check synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
+.PHONY: help venv pull validate download backtest check research research-synthetic synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
 
 help:  ## 显示本帮助
 	@echo "可用命令（make <目标>）："
@@ -30,7 +30,7 @@ pull:  ## 拉取 Docker 镜像
 
 validate:  ## 校验所有入口配置（freqtrade show-config）
 	@source scripts/_common.sh; \
-	for c in configs/config.okx-backtest.json configs/config.binance-futures.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json; do \
+	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json; do \
 		if ft show-config --config $$c > /dev/null 2>&1; then echo "通过  $$c"; \
 		else echo "失败  $$c"; ft show-config --config $$c 2>&1 | tail -n 20; exit 1; fi; \
 	done
@@ -43,6 +43,12 @@ backtest:  ## 批量回测 + 8% 回撤检查（参数见 scripts/backtest_all.sh
 
 check:  ## 只做回撤检查（默认检查最近一次回测；ARGS 可填结果目录）
 	@source scripts/_common.sh; py_ft scripts/check_drawdown.py $(ARGS)
+
+research:  ## 第 2 步策略研究：训练段/样本外/走步验证 + 自动调参 + 中文排名表（可能要几个小时；参数见 scripts/research.sh）
+	bash scripts/research.sh $(ARGS)
+
+research-synthetic:  ## 用合成数据离线跑一遍策略研究流程（不联网，几分钟；数字没有意义）
+	bash scripts/research.sh --synthetic $(ARGS)
 
 synthetic-data:  ## 生成合成测试数据（不是真实行情，只用于流程自检）
 	@source scripts/_common.sh; FT_RUNNER_RESOLVED=synthetic; py_ft scripts/make_synthetic_data.py $(ARGS)

@@ -9,7 +9,7 @@ VolumeSpikeShort -- 单根 K 线巨量卖盘 (只做空, 默认 5 分钟)
 
 信号 (逐根已收盘 K 线, 无未来函数):
   1. 至少 21 根 K 线; open/close/volume > 0
-  2. 本根成交额 (close x volume) >= 50 x 前 20 根成交额均值 (不含本根, 只算 >0 的根, 至少 10 根)
+  2. 本根成交额 (close x volume, USDT) >= 50 x 前 20 根成交额均值 (不含本根, 只算 >0 的根, 至少 10 根)
   3. 前 20 根平均成交额 >= 50,000 USDT (过滤冷门币)
   4. 方向: close < open -> 做空 (卖盘巨量); close > open -> 做多 (默认关闭); 平盘 -> 忽略
   5. 冷却: 同币同方向 5 根 K 线内只算一次
@@ -99,10 +99,12 @@ class VolumeSpikeShort(RustPortMixin, IStrategy):
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # 成交额 = close x volume (volume_spike.rs: let qv = b.close * b.volume)。
-        # 说明: freqtrade 的 volume 列是 "基础币数量"。Binance U 本位是币的数量;
-        # OKX 永续在 ccxt 4.5.x 里取的也是币的数量 (parse_ohlcv volumeIndex=6), 不是张数,
-        # 所以两边都直接 close x volume 即可。
-        qv = dataframe["close"] * dataframe["volume"]
+        # freqtrade 的 volume 列是 "基础币数量": 币安 U 本位是币的数量; OKX 永续 ccxt 取的是 volCcy
+        # (币的数量), 不是 vol (张数), 所以 OKX 上也是 close x volume, 不乘合约面值。
+        # 统一走 quote_volume(): 万一换到 K 线成交量是张数的交易所 (freqtrade 选项
+        # ohlcv_volume_in_contracts, 目前只有 Gate), 会自动乘 contractSize。
+        # 详见 docs/okx-volume-units.md; 自检: scripts/check_volume_units.py
+        qv = self.quote_volume(dataframe, metadata["pair"])
         dataframe["quote_volume"] = qv
         prev = qv.shift(1)
         # Rust: for i in 1..=20 { if qv > 0 { sum += qv; count += 1 } }; count < 10 -> None

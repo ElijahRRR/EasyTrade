@@ -53,6 +53,8 @@ class BigTrendShort(RustPortMixin, IStrategy):
 
     # Rust 需要 >= 220 根 (EMA200 预热); 这里取 300, 与 Rust 实盘 warmup 拉取的 300 根一致
     # (crates/ingestor/src/warmup.rs target_bars 默认 300), 也让 EMA200 更稳定。
+    # 300 根时 EMA200 的起点误差还剩约 37% ((1-2/201)^100), 从中间某天开始的回测开头一段信号可能和连续回测不同;
+    # scripts/research.sh 给样本外 / 走步各段最多 600 根预热 (README "用合成数据自检" 有解释)。
     startup_candle_count = 300
     process_only_new_candles = True
 
