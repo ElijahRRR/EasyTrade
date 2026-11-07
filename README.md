@@ -7,6 +7,9 @@
 
 > 策略说明见 [`docs/strategies.md`](docs/strategies.md)（第 1 步的移植策略）、[`docs/strategies-step2.md`](docs/strategies-step2.md)（第 2 步的新策略：趋势类 + 非趋势类）
 > 和 [`docs/strategies-round3.md`](docs/strategies-round3.md)（第 3 轮：截面动量 `XSMomentum`、`BigTrendShortLowRisk`、子账户组合），策略代码在 `user_data/strategies/`。
+> 第 3 轮真实结果（13 个策略 0 个通过）：[`docs/research-runs/2026-11-07-round3/`](docs/research-runs/2026-11-07-round3/README.md)；
+> 第 4 轮（冻结版 NFI 低杠杆逐年回测 + 币安模拟盘）：[`docs/nfi-yearly.md`](docs/nfi-yearly.md)、[`docs/forward-test.md`](docs/forward-test.md)、
+> [`docs/forward-monitoring.md`](docs/forward-monitoring.md)，见下面「第 4 步：NFI 按年回测和模拟盘」。
 
 ---
 
@@ -50,11 +53,12 @@ binance-quant/
 │   ├── config.okx-backtest.json   ← 【入口】第一阶段：OKX 回测
 │   ├── config.binance-futures.json← 【入口】第二/三阶段：币安合约 模拟盘 / 实盘
 │   ├── config.binance-xsmomentum.json ← 【入口】第 3 轮：截面动量 XSMomentum 单独一个机器人（60 个币、6 个名额）
+│   ├── config.dryrun-nfi.json     ← 【入口】第 4 轮：币安模拟盘（冻结版 NFI X8，1 倍杠杆，只能跑模拟盘；用 scripts/run_dryrun.sh 启动）
 │   ├── config.okx-pairlist-volume.json ← 【入口】只用来按成交量生成交易对列表
 │   ├── config.notify-zh.json      ← 中文 Telegram 通知模板
 │   ├── config.synthetic-test.json ← 【入口】合成数据流程自检专用（结果没有意义）
 │   ├── config.okx-research.json   ← 【入口】第 2 步策略研究（make research 用）
-│   ├── research-overrides/        ← 研究时个别策略自己的设置（例如 XSMomentum.json：max_open_trades 6）
+│   ├── research-overrides/        ← 研究时个别策略自己的设置（例如 XSMomentum.json：max_open_trades 6；NFI 的三个版本各一个，内容相同）
 │   ├── pairs.okx-usdt-perp.json   ← OKX 回测用的交易对列表
 │   ├── pairs.okx-research.json    ← 第 2 步研究用的约 60 个交易对
 │   ├── pairs.binance-usdt-perp.json ← 币安用的交易对列表（20 个，与 pairs.okx-usdt-perp.json 同一批币）
@@ -68,8 +72,15 @@ binance-quant/
 │   ├── research_portfolio.py      ← 子账户组合检查（每个策略一个子账户，看合起来的账户权益）
 │   ├── fetch_benchmarks.sh        ← 下载固定版本的第三方基准策略并核对 sha256（只在 VPS 上用）
 │   ├── research_benchmarks.sh     ← 基准策略研究（make research-benchmarks）
+│   ├── research_nfi_yearly.sh     ← 第 4 轮：NFI X8 低杠杆版本逐年回测（下载、每年单独回测、出结论；make research-nfi-yearly）
+│   ├── nfi_yearly_report.py       ← 逐年回测的报告：每年收益/回撤/最差一笔，和"能不能上模拟盘"的结论
+│   ├── run_dryrun.sh              ← 第 4 轮：启动币安模拟盘 / 看门狗（先做全部检查，不通过就不启动）
+│   ├── forward_report.py          ← 模拟盘前向报告（只读数据库，含浮亏回撤、胜率、盈亏比，对照成功标准）
+│   ├── equity_watchdog.py         ← 账户权益看门狗（含浮亏回撤超过 15% 就停止开新仓、发中文告警）
 │   ├── check_portfolio_math.py    ← 组合检查的算法自检（手工编的资金曲线 vs 手算答案）
-│   ├── check_live_guards.py       ← 实盘保护逻辑自检（make guard-test）
+│   ├── check_drawdown_math.py     ← 含浮亏回撤的算法自检（加仓 / 分批平仓按逐笔订单重建持仓；make guard-test）
+│   ├── check_forward_tools.py     ← 前向报告 + 看门狗自检（合成数据库 + 本机假接口；make forward-check、make guard-test）
+│   ├── check_live_guards.py       ← 实盘保护逻辑自检，含模拟盘配置检查（make guard-test）
 │   ├── check_volume_units.py      ← K线成交量单位自检（OKX 永续 volume = 币的数量）
 │   ├── synthetic_test.sh          ← 用合成数据离线自检整条流程（不联网）
 │   ├── make_synthetic_data.py     ← 生成合成测试数据（不是真实行情）
@@ -93,11 +104,17 @@ binance-quant/
 │   ├── strategies-step2.md        ← 第 2 步新策略说明（趋势类 + 非趋势类 + 共用风控）
 │   ├── strategies-round3.md       ← 第 3 轮：截面动量 XSMomentum、BigTrendShortLowRisk、子账户组合
 │   ├── benchmarks.md              ← 基准策略（freqtrade-strategies、NFI）：来源、固定版本、怎么比
+│   ├── nfi-yearly.md              ← 第 4 轮：NFI 的杠杆怎么定的、三个版本、逐年回测怎么跑、怎么看结果
+│   ├── forward-test.md            ← 第 4 轮：币安模拟盘前向测试（证明什么、在哪跑、怎么启动、什么时候停、怎么判断成功）
+│   ├── forward-monitoring.md      ← 第 4 轮：前向报告 + 账户权益看门狗
+│   ├── systemd/easytrade-dryrun@.service ← systemd 模板（模拟盘机器人 + 看门狗两个实例）
+│   ├── research-runs/             ← VPS 上真实研究的原始报告存档（第 2 轮 summary、第 3 轮全部报告和摘要）
 │   └── okx-volume-units.md        ← OKX K线成交量单位说明
 └── user_data/
     ├── strategies/                ← 策略代码（benchmarks/ = 基准策略的封顶杠杆子类；vendor/ = 下载的第三方基准策略，不提交）
     ├── data/                      ← 下载的行情数据（不提交）；okx-synthetic/ 是合成测试数据
     ├── backtest_results/          ← 回测结果（不提交）
+    ├── dryrun/                    ← 模拟盘的数据库、日志、看门狗状态、冻结的策略代码副本（不提交）
     └── logs/                      ← 日志（不提交）
 ```
 
@@ -257,6 +274,11 @@ make check MAX_DD_PCT=12                                         # 用更严的 
 > 注意：freqtrade 自己报告里的 `Max % of account underwater (balance)`（"wallet based"）在**合约模式下只统计已平仓余额，不含浮亏**
 > （已对照 freqtrade 2026.10 源码 `wallets.py` 确认），所以不能拿它当"含浮亏回撤"。以本脚本的"回撤(含浮亏)"为准。
 > K 线数据目录默认是 `user_data/data/<交易所>`（例如 `user_data/data/okx`），不在默认位置时加 `--datadir <目录>`。
+>
+> 加仓 / 分批平仓的交易（例如 NFI）：freqtrade 结果里每笔交易记的数量和平均开仓价是**最后的**值，所以"回撤(含浮亏)"按结果里的
+> 逐笔订单重建每个时段的持仓数量和均价，分批平仓的盈亏记在成交那一刻（第 4 轮起；一次开满的交易结果和以前逐位相同）。
+> 自检：`.venv/bin/python scripts/check_drawdown_math.py`（`make guard-test` 也会跑）；加 `--result <backtest-result-….zip>` 还会核对这个回测结果，并列出新旧两种算法的回撤。
+
 退出码：0 = 全部通过，1 = 有未通过，3 = 没找到结果（方便以后写自动化）。
 
 > 回测回撤 ≤ 15% **不等于**实盘一定 ≤ 15%（滑点、极端行情、数据差异）。建议回测目标留余量，例如 ≤ 12%（`MAX_DD_PCT=12`）。
@@ -483,6 +505,67 @@ freqtrade 不能在同一个账户里同时跑两个带杠杆的机器人，所�
   同样地，**不要**反复换组合直到某一组"通过" —— 试的组合越多，越容易碰巧挑出一组好看的。
 - 算法自检：`.venv/bin/python scripts/check_portfolio_math.py`（手工编的资金曲线，和手算答案对；也核对回撤上限只定义了一处、判定按它来；
   加 `--run-dir <目录>` 再拿一次研究结果核对）。
+- 含浮亏回撤的算法自检：`.venv/bin/python scripts/check_drawdown_math.py`（加仓、分批平仓、杠杆、还没平仓的交易，都和手算的权益曲线对；一次开平的交易和旧算法逐位相同）。
+
+---
+
+## 第 4 步：NFI 按年回测和模拟盘
+
+**第 3 轮的真实结果**（2026-11-07，VPS；原始报告和摘要存档在 [`docs/research-runs/2026-11-07-round3/`](docs/research-runs/2026-11-07-round3/README.md)）：**13 个策略，0 个通过**。
+
+- 我们自己的 6 个日线策略都"跟着行情走"：只做空的两个只在样本外（2024-11 ~ 2026-11）赚、没看过的一段（2021 ~ 2023）亏；
+  TsmomTrend、DonchianTrend 正好反过来，2021 ~ 2023 赚（回撤超过 15%）、样本外亏。没有一个两段都赚钱、回撤又在 15% 以内。
+- freqtrade-strategies 的 6 个基准策略（1h 4 个、5m 2 个）回撤 25% ~ 88%。
+- NFI X8（`NostalgiaForInfinityX8Capped`，5m、20 个币、只测了 2024-11-07 ~ 2026-11-07）：样本外 +54.27%、35 笔、胜率 97.14%、盈亏因子 23.45、
+  含浮亏回撤 9.28%，但训练段含浮亏回撤 **30.26%**（超过 15%）。而且有两个大问号：
+  1. **整段都是作者的样本内**：NFI X8 这个文件 2026-09-06 才建，到 2026-11-07 已经提交了约 1223 次（其中 488 次的标题是 "add protection"）；
+  2. **它拿着亏损的仓位不平**：样本外只看平仓的回撤 1.92%，含浮亏 9.28%；胜率 97% 是因为亏的仓位一直拿着、等反弹或加仓摊平。
+
+所以第 4 轮不再改 NFI：**冻结固定版本 → 降杠杆（1 倍 / 2 倍）→ 逐年回测做合理性检查（美国 VPS，OKX 数据）→ 币安模拟盘 2 ~ 3 个月做真正的样本外检验**
+（在币安允许访问的地区的服务器上），回撤上限还是 15%（含浮亏）。
+
+### NFI 低杠杆版本逐年回测（美国 VPS，OKX 数据）
+
+第 3 轮 5 倍封顶的 NFI 回撤超过 15%，所以另外做了 1 倍（`NostalgiaForInfinityX8Lev1`）和 2 倍（`NostalgiaForInfinityX8Lev2`）两个版本
+（`user_data/strategies/benchmarks/BenchmarkCaps.py`，每一条杠杆路径都封顶），和 5 倍版本一起，从 2021 年起每个日历年单独回测一次
+（每次都从 1000 USDT 开始，包含 2022 年熊市；币的个数按内存自动定），最后给每个版本一个"可以上模拟盘"或"不建议上模拟盘"的结论和原因：
+
+```bash
+bash scripts/fetch_benchmarks.sh     # 先下载固定版本的 NFI（只下载一次）
+tmux new -s nfi                      # 很慢（要下载数据，跑好几个小时到几天），放在 tmux 里
+make research-nfi-yearly             # 结果在 user_data/research/nfi_yearly/run_<时间>/summary.txt
+make research-nfi-yearly ARGS="--classes Lev1"    # 只跑 1 倍版本（先看它，省三分之二的时间）
+make research-nfi-yearly-synthetic   # 不联网的流程自检（合成数据 + 替身策略，数字没有意义）
+```
+
+注意：这些年份 NFI 的作者都看过，属于样本内，"可以上模拟盘"只说明没有明显问题，真正的检验是之后在币安模拟盘上跑。
+回撤上限还是 15%（含浮亏）；NFI 会加仓 / 分批平仓，回撤按逐笔订单重建持仓来算（见「看懂回撤检查」）。
+详细说明（NFI 的杠杆在源码里怎么定的、要多久、要多少内存、怎么看每一列和结论）：[`docs/nfi-yearly.md`](docs/nfi-yearly.md)。
+
+### 币安模拟盘前向测试（冻结版 NFI，1 倍杠杆）
+
+逐年回测用的都是 NFI 作者可能看过的历史数据。前向测试用**以后才出现的行情**再检验一次：在币安 U 本位永续上跑模拟盘（dry-run），不用真钱，也不需要币安 API Key。
+
+- **只能在币安允许访问的地区的服务器上运行**（例如跑 Rust 引擎的那台 Vultr 服务器）。美国 IP 会被币安拒绝（HTTP 451），美国 VPS 继续只做 OKX 回测。
+- 先检查：`make dryrun-nfi-check`（= `bash scripts/run_dryrun.sh nfi --check-only`）；没问题再启动：`make dryrun-nfi`。长期运行用 systemd 模板 `docs/systemd/easytrade-dryrun@.service`（机器人和账户权益看门狗各一个实例）。
+- 那台服务器上还没有这个仓库时：先装 `python3-venv git make curl`、`git clone` 仓库、`make venv`，步骤见 [`docs/forward-test.md`](docs/forward-test.md) 第 6 节。
+- 启动脚本会先检查这份配置只能跑模拟盘、NFI 是固定版本，然后冻结一份策略代码（之后 git pull 不影响这一轮），再检查能不能连上币安、内存和硬盘够不够。
+  退出码：20 = 安全检查不通过，21 = 这台服务器所在的地区不能用币安，22 = 内存 / 硬盘不够，23 = 连不上币安（可以稍后重试）。
+- 账户权益（含浮亏）回撤超过 15% 就停止开新仓，等人工检查（`scripts/equity_watchdog.py`，见下一小节）。
+- FreqUI 只监听 `127.0.0.1:8081`，远程用 SSH 隧道看，而且必须开着（看门狗靠它暂停开新仓，关掉会拒绝启动）。端口和 `config.binance-xsmomentum.json` 相同，两个不要在同一台服务器上同时跑。
+- 账号密码放在 `.env.dryrun-nfi`（权限 600，不进 git）。
+- 完整说明（证明什么、不证明什么、要跑多久、什么时候停、怎么判断成功）：[`docs/forward-test.md`](docs/forward-test.md)
+
+### 模拟盘监控：前向报告 + 账户权益看门狗
+
+freqtrade 自己的 MaxDrawdown 保护只看已平仓的交易；项目硬规则看的是**含浮亏**的账户权益（回撤 ≤ 15%）。所以模拟盘旁边跑两个工具，说明见 [`docs/forward-monitoring.md`](docs/forward-monitoring.md)：
+
+- **账户权益看门狗** `scripts/equity_watchdog.py`（systemd 实例 `easytrade-dryrun@nfi-watchdog`；前台试跑 `make watchdog`）：每 60 秒读一次机器人的接口（只连本机 127.0.0.1:8081），
+  回撤 12% 预警，**超过 15% 就让机器人停止开新仓**并发中文告警。它不会自己恢复：人工复盘后运行
+  `.venv/bin/python scripts/equity_watchdog.py --reset --note "复盘结论"`，再在 FreqUI 里点"启动交易"。`--status` 查看状态。
+- **前向报告** `make forward-report`（先在模拟盘服务器上用 `freqtrade download-data` 补K线）：只读模拟盘数据库，逐根K线算含浮亏的权益曲线、回撤、胜率、盈亏比、持仓浮亏，
+  对照成功标准（≥ 60 天、≥ 30 笔、回撤 ≤ 15% 且看门狗没触发过、收益 > 0、盈亏比 ≥ 1.2）。退出码 3 = 回撤超限或看门狗正处于暂停；加 `--telegram` 发中文摘要，可以放进 cron 每天跑。
+- 自检：`make forward-check`（不联网，几秒钟；`make guard-test` 也会跑）。
 
 ---
 
@@ -494,7 +577,8 @@ freqtrade 不能在同一个账户里同时跑两个带杠杆的机器人，所�
 make synthetic-test                      # = bash scripts/synthetic_test.sh，约 10 分钟
 make synthetic-test ARGS="--quick"       # 跳过第 4 步的未来函数/预热检查（约 4 分钟）
 make synthetic-test ARGS="--regen"       # 重新生成合成数据
-make guard-test                          # 只跑第 3 步：实盘保护逻辑自检（几秒钟）
+make guard-test                          # 只跑第 3 步：实盘保护逻辑自检，另外还有含浮亏回撤算法自检、前向报告 + 看门狗自检（十几秒）
+make research-nfi-yearly-synthetic       # 第 4 轮 NFI 逐年回测流程自检（合成数据 + 替身策略，不用 NFI，约 10 分钟）
 ```
 
 它会依次做：
@@ -687,6 +771,9 @@ make down        # 停止
 模拟盘会用币安实时行情，按策略"假装"下单，并发中文 Telegram 通知 —— 这就是第二阶段的"提醒"。
 建议至少跑 2–4 周，对比模拟盘和回测的表现。
 
+第 4 轮的 NFI 模拟盘（冻结版、1 倍杠杆）**不用这里的方式**，它有自己的配置、启动脚本、看门狗和前向报告：
+`make dryrun-nfi-check` → `make dryrun-nfi`，见「第 4 步：NFI 按年回测和模拟盘」和 [`docs/forward-test.md`](docs/forward-test.md)。
+
 ### 上实盘前检查清单（第三阶段）
 
 - [ ] 策略在**币安数据**上回测通过：两种回撤都 ≤ 15%（最好留余量，例如 ≤ 12%）、杠杆 ≤ 5x、交易数足够、样本外区间也通过；
@@ -709,7 +796,7 @@ make down        # 停止
 |---|---|---|---|
 | 1 回测研究 | OKX 数据回测，筛选满足"账户回撤 ≤ 15%（2026-11-07 起；以前 8%）、杠杆 ≤ 5x"的策略 | 美国 VPS / Mac | **进行中** |
 | 1.5 币安复核 | 用币安数据重新回测确认 | 币安允许地区的服务器 | 待开始 |
-| 2 模拟盘 + 提醒 | 币安 dry-run + 中文 Telegram 通知 | 币安允许地区的服务器 | 待开始 |
+| 2 模拟盘 + 提醒 | 币安 dry-run + 中文 Telegram 通知 | 币安允许地区的服务器 | **准备好了**：第 4 轮冻结版 NFI 1 倍模拟盘 + 看门狗 + 前向报告（见「第 4 步」），等逐年回测结论后启动 |
 | 3 自动实盘 | 小资金实盘，稳定后加资金 | 币安允许地区的服务器 | 待开始 |
 | 另 | FreqUI 网页汉化 | 所有环境 | **已完成**（见「FreqUI 中文界面」） |
 

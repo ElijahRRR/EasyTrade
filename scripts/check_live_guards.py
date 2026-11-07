@@ -21,17 +21,35 @@
      等它到了以后所有币要用完整的排名重算；超过 300 秒还没到就按其余的币排名。
      另外：吊灯止损在初始止损被 25% 上限截短时按比例收近（组合热度不超过开仓风险的约 4/3 倍）、
      仓位低于交易所最小下单额时记日志（研究报告靠它数"开不出来"的次数）。
+  9. 第 4 轮币安模拟盘（前向测试）配置 configs/config.dryrun-nfi.json（冻结版 NFI，1 倍杠杆，docs/forward-test.md）：
+     合并后的配置（文件 + 环境变量，和 freqtrade 读到的一样）必须是模拟盘、币安合约逐仓、策略是 1 倍版本
+     （BenchmarkCaps.py 里这个类的杠杆封顶 = 1、项目上限 5）、FreqUI 只监听 127.0.0.1、NFI 要求的设置没被改、
+     配置文件里没有密钥 / 服务器 IP；环境变量把 dry_run 改成 false 时拒绝启动。
+     scripts/run_dryrun.sh 启动前用的是同一个函数（--dryrun-config），这里再加回归检查（用自己写的替身基类测 1 倍封顶，
+     不导入 NFI），并实际跑一次 run_dryrun.sh 的"只检查配置"模式。
 
 用法：
   .venv/bin/python scripts/check_live_guards.py
   make guard-test
-退出码：0 = 全部通过；1 = 有检查未通过。
+  .venv/bin/python scripts/check_live_guards.py --dryrun-config configs/config.dryrun-nfi.json
+      # 只检查一份模拟盘配置（读当前的环境变量；scripts/run_dryrun.sh 启动前自动调用，不联网）
+退出码：0 = 全部通过；1 = 有检查未通过（--dryrun-config：2 = 这份配置不能用来跑模拟盘）。
 """
 
 from __future__ import annotations
 
+import argparse
+import ast
+import copy
+import importlib.util
+import ipaddress
 import logging
+import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -560,13 +578,531 @@ def test_xsmomentum_live() -> None:
         Trade.use_db = use_db
 
 
-def main() -> int:
+# ----------------------------------------------------------------------------
+# 7) 币安模拟盘（前向测试）配置：第 4 轮冻结版 NFI 1 倍（configs/config.dryrun-nfi.json，docs/forward-test.md）
+#    scripts/run_dryrun.sh 启动前调用 check_dryrun_config()（--dryrun-config），这里再做回归检查
+# ----------------------------------------------------------------------------
+# 模拟盘配置（相对项目根目录） -> 它必须用的策略类、这个类的杠杆封顶最多几倍
+DRYRUN_TARGETS: dict[str, tuple[str, float]] = {
+    "configs/config.dryrun-nfi.json": ("NostalgiaForInfinityX8Lev1", 1.0),
+}
+DRYRUN_DIR = "user_data/dryrun"
+DRYRUN_DB_PREFIX = f"sqlite:///{DRYRUN_DIR}/"
+CAPS_FILE_NAME = "BenchmarkCaps.py"
+CAPS_FILE = ROOT_DIR / "user_data" / "strategies" / "benchmarks" / CAPS_FILE_NAME
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# NFI："不要在配置里覆盖策略的变量"。配置里出现这些键，就会改掉 NFI 自己的设置（freqtrade 的
+# StrategyResolver 用配置覆盖策略属性；NFI __init__ 还会读配置顶层 / nfi_parameters 里的它自己的参数）。
+# 前向测试要跑的就是固定版本的默认设置，所以一个都不许有。NFI 自己要求的几项（max_open_trades 等）另外查值。
+NFI_NO_OVERRIDE_KEYS = (
+    "minimal_roi", "stoploss", "trailing_stop", "trailing_stop_positive", "trailing_stop_positive_offset",
+    "trailing_only_offset_is_reached", "use_custom_stoploss", "process_only_new_candles", "startup_candle_count",
+    "exit_profit_offset", "disable_dataframe_checks", "ignore_buying_expired_candle_after",
+    "position_adjustment_enable", "max_entry_position_adjustment",
+    "nfi_parameters", "nfi_advanced_mode", "long_entry_signal_params", "short_entry_signal_params",
+    "num_cores_indicators_calc", "max_slippage", "derisk_enable", "stops_enable", "grinding_enable",
+)
+# NFI 能从配置顶层读的参数（固定版本 __init__ 里的 NFI_SAFE_PARAMETERS，按名字前缀；杠杆 futures_mode_leverage* 也在这里）
+NFI_NO_OVERRIDE_PREFIXES = (
+    "futures_mode_leverage", "futures_max_open_trades_", "custom_fee_", "stop_threshold_", "regular_mode_derisk",
+    "grind_mode_", "system_v4_", "legacy_system_", "inclusive_bad_trade_", "bad_trade_controller_",
+)
+# 配置文件里不能出现的密钥字段（值必须为空；FreqUI 的 jwt_secret_key 允许 config.base.json 的占位符）
+SECRET_FIELDS = (
+    ("exchange", "key"), ("exchange", "secret"), ("exchange", "password"), ("exchange", "uid"),
+    ("exchange", "walletAddress"), ("exchange", "privateKey"),
+    ("api_server", "username"), ("api_server", "password"), ("api_server", "ws_token"),
+    ("telegram", "token"), ("telegram", "chat_id"), ("webhook", "url"), ("discord", "webhook_url"),
+)
+_TG_TOKEN_RE = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{30,}\b")
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+def _num_node(node: ast.AST, consts: dict[str, float]) -> float | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+        return float(node.value)
+    if isinstance(node, ast.Name):
+        return consts.get(node.id)
+    return None
+
+
+def caps_leverage_info(caps_file: Path, class_name: str) -> dict:
+    """静态读 BenchmarkCaps.py（只解析、不导入，所以没有 NFI 文件也能查）：
+    class_name 在不在、它的 _easytrade_leverage_cap（自己没写就沿父类找）、文件的 MAX_LEVERAGE、它自己有没有改写 leverage()。
+    实际的封顶 = min(max(cap, 1), MAX_LEVERAGE)，和 BenchmarkCaps._cap_value 相同。"""
+    info: dict = {"file": str(caps_file), "found": False, "cap": None, "max_leverage": None,
+                  "effective": None, "own_leverage_method": False, "error": ""}
+    try:
+        tree = ast.parse(caps_file.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError) as exc:
+        info["error"] = f"读不了 {caps_file}：{exc}"
+        return info
+    consts: dict[str, float] = {}
+    classes: dict[str, ast.ClassDef] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            v = _num_node(node.value, consts)
+            if v is not None:
+                consts[node.targets[0].id] = v
+        elif isinstance(node, ast.ClassDef):
+            classes[node.name] = node
+    info["max_leverage"] = consts.get("MAX_LEVERAGE")
+
+    def cap_of(name: str, depth: int = 0) -> float | None:
+        node = classes.get(name)
+        if node is None or depth > 10:
+            return None
+        for st in node.body:
+            targets = st.targets if isinstance(st, ast.Assign) else [st.target] if isinstance(st, ast.AnnAssign) else []
+            if any(isinstance(t, ast.Name) and t.id == "_easytrade_leverage_cap" for t in targets) and st.value is not None:
+                return _num_node(st.value, consts)
+        for base in node.bases:
+            if isinstance(base, ast.Name) and base.id in classes:
+                found = cap_of(base.id, depth + 1)
+                if found is not None:
+                    return found
+        return None
+
+    node = classes.get(class_name)
+    if node is None:
+        return info
+    info["found"] = True
+    info["own_leverage_method"] = any(
+        isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)) and st.name == "leverage" for st in node.body)
+    cap = cap_of(class_name)
+    info["cap"] = cap
+    mx = info["max_leverage"]
+    if cap is not None and mx is not None:
+        info["effective"] = min(max(cap, 1.0), mx)
+    return info
+
+
+def _get(cfg: dict, *keys: str):
+    cur = cfg
+    for k in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+
+def inline_secret_problems(file_cfg: dict) -> list[str]:
+    """配置文件本身（不含环境变量）里有没有密钥、Telegram Token、服务器 IP。"""
+    out = []
+    for section, key in SECRET_FIELDS:
+        val = _get(file_cfg, section, key)
+        if val not in (None, ""):
+            out.append(f"配置文件里写了 {section}.{key}（密钥只能放在 .env.dryrun-nfi 里，用 FREQTRADE__{section.upper()}__{key.upper()}）")
+    jwt = _get(file_cfg, "api_server", "jwt_secret_key")
+    if jwt not in (None, "") and "PLACEHOLDER" not in str(jwt):
+        out.append("配置文件里写了 api_server.jwt_secret_key（只能用环境变量 FREQTRADE__API_SERVER__JWT_SECRET_KEY）")
+
+    def walk(obj, path: str):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield from walk(v, f"{path}.{k}" if path else str(k))
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                yield from walk(v, f"{path}[{i}]")
+        elif isinstance(obj, str):
+            yield path, obj
+
+    for path, text in walk(file_cfg, ""):
+        if path.startswith(("original_config", "config_files")):
+            continue
+        if _TG_TOKEN_RE.search(text) or "api.telegram.org/bot" in text:
+            out.append(f"配置文件的 {path} 里像是有 Telegram Token")
+        for ip in _IPV4_RE.findall(text):
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if not (addr.is_loopback or addr.is_unspecified):
+                out.append(f"配置文件的 {path} 里有 IP 地址 {ip}（不要把服务器 IP 写进仓库里的文件）")
+    return out
+
+
+def dryrun_config_problems(cfg: dict, expect_strategy: str, expect_max_lev: float, caps_file: Path) -> tuple[list[str], list[str], dict]:
+    """合并后的配置（文件 + 环境变量）能不能用来跑这个模拟盘。返回 (不通过的原因, 提醒, 关键信息)。
+    启动时 scripts/run_dryrun.sh 还会加 --dry-run --strategy --strategy-path --db-url（值和这里检查的相同）。"""
+    from freqtrade.plugins.pairlist.pairlist_helpers import expand_pairlist
+
+    bad: list[str] = []
+    notes: list[str] = []
+
+    # 1. 只能是模拟盘
+    if cfg.get("dry_run") is not True:
+        bad.append(f"dry_run 不是 true（现在是 {cfg.get('dry_run')!r}；多半是环境变量 FREQTRADE__DRY_RUN 改的）："
+                   "这份配置只能跑模拟盘，拒绝启动")
+    # 2. 币安 USDT 本位永续、逐仓
+    exch = cfg.get("exchange") or {}
+    for label, got, want in (("exchange.name", exch.get("name"), "binance"), ("trading_mode", cfg.get("trading_mode"), "futures"),
+                             ("margin_mode", cfg.get("margin_mode"), "isolated"), ("stake_currency", cfg.get("stake_currency"), "USDT")):
+        if got != want:
+            bad.append(f"{label} 应该是 {want}，现在是 {got!r}")
+    for key in ("key", "secret", "password", "uid", "privateKey"):
+        if exch.get(key):
+            bad.append(f"exchange.{key} 有值：模拟盘不需要币安 API Key，不要放进模拟盘的环境变量 / 配置")
+    # 3. 策略 = 1 倍版本，杠杆封顶 <= 这个版本的上限 <= 项目上限 5 倍
+    hard = float(easytrade_risk.HARD_MAX_LEVERAGE)
+    strat = cfg.get("strategy")
+    if strat != expect_strategy:
+        bad.append(f"策略应该是 {expect_strategy}（{expect_max_lev:g} 倍版本），现在是 {strat!r}")
+    lev = caps_leverage_info(caps_file, expect_strategy)
+    if lev["error"]:
+        bad.append(lev["error"])
+    elif not lev["found"]:
+        bad.append(f"{caps_file} 里没有 class {expect_strategy}")
+    else:
+        if lev["max_leverage"] is None or lev["max_leverage"] > hard:
+            bad.append(f"{caps_file.name} 的 MAX_LEVERAGE 应该 <= {hard:g}，现在是 {lev['max_leverage']}")
+        if lev["effective"] is None:
+            bad.append(f"读不出 {expect_strategy} 的杠杆封顶（_easytrade_leverage_cap）")
+        elif lev["effective"] > min(expect_max_lev, hard):
+            bad.append(f"{expect_strategy} 的杠杆封顶是 {lev['effective']:g} 倍，这个模拟盘最多 {min(expect_max_lev, hard):g} 倍")
+        if lev["own_leverage_method"]:
+            bad.append(f"{expect_strategy} 自己改写了 leverage()，封顶可能不生效（应该只改 _easytrade_leverage_cap）")
+    if cfg.get("force_entry_enable") is not False:
+        bad.append("force_entry_enable 必须是 false（强制开仓可以自带杠杆参数，绕过策略的封顶）")
+    # 4. NFI 的设置不许被配置改掉；NFI 自己要求的几项必须是这些值
+    over = sorted(k for k in cfg if k in NFI_NO_OVERRIDE_KEYS or k.startswith(NFI_NO_OVERRIDE_PREFIXES))
+    if over:
+        bad.append("配置（或环境变量）改了 NFI 自己的设置：" + "、".join(over) + "（前向测试只跑固定版本的默认设置）")
+    for key, want in (("timeframe", "5m"), ("max_open_trades", 6), ("stake_amount", "unlimited"), ("use_exit_signal", True),
+                      ("exit_profit_only", False), ("ignore_roi_if_entry_signal", True)):
+        if cfg.get(key) != want or type(cfg.get(key)) is not type(want):
+            bad.append(f"{key} 应该是 {want!r}（NFI 要求 / 和回测相同），现在是 {cfg.get(key)!r}")
+    # 5. 自己的数据库、自己的策略目录
+    db = str(cfg.get("db_url") or "")
+    if not (db.startswith(DRYRUN_DB_PREFIX) and db.endswith(".sqlite")) or "live" in db:
+        bad.append(f"db_url 应该是 {DRYRUN_DB_PREFIX}<名字>.sqlite（模拟盘自己的数据库），现在是 {db!r}")
+    sp = str(cfg.get("strategy_path") or "")
+    if not sp.startswith(DRYRUN_DIR + "/"):
+        bad.append(f"strategy_path 应该是 {DRYRUN_DIR}/ 下面的冻结副本目录，现在是 {sp!r}")
+    # 6. FreqUI / REST API 只监听本机
+    api = cfg.get("api_server") or {}
+    if api.get("enabled"):
+        if str(api.get("listen_ip_address")) not in LOOPBACK_HOSTS:
+            bad.append(f"api_server.listen_ip_address 必须是 127.0.0.1（现在是 {api.get('listen_ip_address')!r}）："
+                       "FreqUI 不能直接暴露到公网，远程用 SSH 隧道")
+    else:
+        # 15% 回撤规则（DEFAULT_MAX_DD_PCT）靠账户权益看门狗执行，它只能通过 REST API 读权益、调 /stopentry 暂停开仓：
+        # API 没开 = 回撤超限也没人能让机器人停止开新仓，不能启动
+        bad.append("api_server 没开（多半是环境变量 FREQTRADE__API_SERVER__ENABLED=false 改的）：账户权益看门狗"
+                   "只能通过 REST API 读账户权益、在回撤超过上限时暂停开新仓，API 关掉就没人执行 15% 的规则")
+    # 7. 交易对：固定列表，BTC 必须在（NFI 每个币都要看 BTC）
+    pl = [p.get("method") for p in (cfg.get("pairlists") or []) if isinstance(p, dict)]
+    if pl != ["StaticPairList"]:
+        bad.append(f"pairlists 应该只有 StaticPairList（前向测试期间币不变），现在是 {pl}")
+    wl = list(exch.get("pair_whitelist") or [])
+    try:
+        black = set(expand_pairlist(list(exch.get("pair_blacklist") or []), wl))
+    except ValueError as exc:
+        black = set()
+        bad.append(f"pair_blacklist 写法不对：{exc}")
+    eff = [p for p in wl if p not in black]
+    stake = cfg.get("stake_currency") or "USDT"
+    btc = f"BTC/{stake}:{stake}"
+    if btc not in eff:
+        bad.append(f"交易对里没有 {btc}（NFI 每个币都要参考 BTC）")
+    if len(eff) < 20:
+        bad.append(f"交易对只有 {len(eff)} 个（至少 20 个；NFI 推荐 40 ~ 80 个）")
+    elif len(eff) < 40:
+        notes.append(f"交易对 {len(eff)} 个，比 NFI 推荐的 40 ~ 80 个少，交易会少一些")
+    wallet = cfg.get("dry_run_wallet")
+    if not isinstance(wallet, (int, float)) or isinstance(wallet, bool) or wallet <= 0:
+        bad.append(f"dry_run_wallet 应该是正数（模拟资金，USDT），现在是 {wallet!r}")
+    tg = cfg.get("telegram") or {}
+    if tg.get("enabled"):
+        notes.append("开了 freqtrade 自带的 Telegram 命令机器人：它要用自己的 Token，不能和别的机器人共用（会互相抢消息）")
+    facts = {
+        "strategy": strat, "strategy_path": sp, "db_url": db, "bot_name": cfg.get("bot_name") or "",
+        "exchange": exch.get("name"), "stake_currency": stake, "pairs": len(eff), "wallet": wallet,
+        "api": f"{api.get('listen_ip_address')}:{api.get('listen_port')}" if api.get("enabled") else "",
+        "lev_cap": lev.get("effective"), "caps_file": str(caps_file),
+    }
+    return bad, notes, facts
+
+
+def load_dryrun_config(path: Path, with_env: bool) -> dict:
+    """和 freqtrade 一样读配置：文件（含 add_config_files）+ 环境变量 FREQTRADE__*（环境变量优先）。"""
+    from freqtrade.configuration.environment_vars import environment_vars_to_dict
+    from freqtrade.configuration.load_config import load_from_files
+    from freqtrade.misc import deep_merge_dicts
+
+    cfg = load_from_files([str(path)])
+    if with_env:
+        cfg = deep_merge_dicts(environment_vars_to_dict(), cfg)
+    return cfg
+
+
+def freqtrade_validation_error(cfg: dict) -> str:
+    """freqtrade 自己的配置校验（schema + 一致性，同 freqtrade trade 加载完策略以后的那一次）。
+    stoploss / minimal_roi 平时由策略提供，这里填 NFI 的 -0.99 和一个占位值。没问题返回空字符串。"""
+    from freqtrade.configuration.config_validation import validate_config_consistency
+    from freqtrade.exceptions import ConfigurationError
+
+    c = copy.deepcopy(cfg)
+    c["runmode"] = RunMode.DRY_RUN
+    c.setdefault("stoploss", -0.99)
+    c.setdefault("minimal_roi", {"0": 100.0})
+    try:
+        validate_config_consistency(c)
+    except (ConfigurationError, ValueError) as exc:
+        return str(exc)
+    return ""
+
+
+def default_caps_file(cfg: dict) -> Path:
+    """启动时真正用的 BenchmarkCaps.py：冻结副本（strategy_path 下面）有就用它，否则用仓库里的（第一次启动时会被复制过去）。"""
+    sp = cfg.get("strategy_path")
+    if sp:
+        frozen = (ROOT_DIR / sp / CAPS_FILE_NAME) if not Path(sp).is_absolute() else Path(sp) / CAPS_FILE_NAME
+        if frozen.is_file():
+            return frozen
+    return CAPS_FILE
+
+
+def check_dryrun_config(config_path: str, caps_file: str | None = None, with_env: bool = True) -> int:
+    """scripts/run_dryrun.sh 用：检查一份模拟盘配置。人看的结果打印出来；给脚本读的值打印成 "@@键=值" 行。"""
+    path = (ROOT_DIR / config_path) if not Path(config_path).is_absolute() else Path(config_path)
+    rel = os.path.relpath(path, ROOT_DIR)
+    if rel not in DRYRUN_TARGETS:
+        print(f"[模拟盘配置检查] 错误：{rel} 不是登记过的模拟盘配置（scripts/check_live_guards.py 的 DRYRUN_TARGETS）")
+        return 2
+    expect_strategy, expect_lev = DRYRUN_TARGETS[rel]
+    try:
+        file_cfg = load_dryrun_config(path, with_env=False)
+        cfg = load_dryrun_config(path, with_env=with_env)
+    except Exception as exc:  # 配置文件写错（JSON 语法等）
+        print(f"[模拟盘配置检查] 错误：读不了配置 {rel}：{exc}")
+        return 2
+    caps = Path(caps_file) if caps_file else default_caps_file(cfg)
+    bad = inline_secret_problems(file_cfg)
+    more, notes, facts = dryrun_config_problems(cfg, expect_strategy, expect_lev, caps)
+    bad += more
+    err = freqtrade_validation_error(cfg)
+    if err:
+        bad.append(f"freqtrade 自己的配置校验不通过：{err}")
+    for n in notes:
+        print(f"[模拟盘配置检查] 注意：{n}")
+    if bad:
+        for b in bad:
+            print(f"[模拟盘配置检查] 错误：{b}")
+        print(f"[模拟盘配置检查] 不通过（{len(bad)} 项）：{rel} 现在不能用来跑模拟盘")
+        return 2
+    lev_txt = f"{facts['lev_cap']:g}" if isinstance(facts["lev_cap"], float) else "?"
+    print(f"[模拟盘配置检查] 通过：{rel}（模拟盘、币安合约逐仓、策略 {facts['strategy']}、杠杆封顶 {lev_txt} 倍、"
+          f"交易对 {facts['pairs']} 个、模拟资金 {facts['wallet']} {facts['stake_currency']}、FreqUI {facts['api'] or '未开'}）")
+    for k, v in facts.items():
+        print(f"@@{k}={v}")
+    return 0
+
+
+# 替身基类（本项目自己写的测试代码，不是 NFI）：故意要 10 倍杠杆、配置还能把杠杆设置改大，用来测 BenchmarkCaps.py 的封顶
+_STUB_NFI = '''\
+"""替身基类：本项目 scripts/check_live_guards.py 写的测试代码，不是 NostalgiaForInfinity。只用来测 BenchmarkCaps.py 的杠杆封顶。"""
+from freqtrade.strategy import IStrategy
+
+
+class NostalgiaForInfinityX8(IStrategy):
+    INTERFACE_VERSION = 3
+    timeframe = "5m"
+    stoploss = -0.99
+    minimal_roi = {"0": 100.0}
+    can_short = True
+    target_profit_cache = None
+    futures_mode_leverage = 10.0
+    futures_mode_leverage_rebuy_mode = 10.0
+    futures_mode_leverage_grind_mode = 10.0
+    futures_mode_leverage_long = None
+    futures_mode_leverage_short = 8.0
+
+    def __init__(self, config):
+        super().__init__(config)
+        for name in [n for n in dir(type(self)) if n.startswith("futures_mode_leverage")]:
+            if name in config:
+                setattr(self, name, config[name])
+
+    def leverage(self, pair, current_time, current_rate, proposed_leverage, max_leverage, entry_tag, side, **kwargs):
+        return 10.0
+
+    def populate_indicators(self, dataframe, metadata):
+        return dataframe
+
+    def populate_entry_trend(self, dataframe, metadata):
+        return dataframe
+
+    def populate_exit_trend(self, dataframe, metadata):
+        return dataframe
+'''
+
+
+def _clean_env(**extra: str) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("FREQTRADE__", "EASYTRADE_DRYRUN_"))}
+    env.pop("MAX_DD_PCT", None)  # 回撤上限用默认（项目硬规则）；要测改过的值用 extra 传
+    env["EASYTRADE_DRYRUN_ENV_FILE"] = "none"  # 不读服务器上真正的 .env.dryrun-nfi，结果只看这里给的环境变量
+    if env.get("FT_RUNNER") not in ("venv", "path"):
+        env.pop("FT_RUNNER", None)  # run_dryrun.sh 只支持 venv / path（make synthetic-test、Docker 里自动找）
+    env.update(extra)
+    return env
+
+
+def test_dryrun_config() -> None:
+    print("7) 币安模拟盘配置（第 4 轮：冻结版 NFI 1 倍，configs/config.dryrun-nfi.json）")
+    rel = "configs/config.dryrun-nfi.json"
+    path = ROOT_DIR / rel
+    expect_strategy, expect_lev = DRYRUN_TARGETS[rel]
+    file_cfg = load_dryrun_config(path, with_env=False)
+
+    # 7a 配置文件本身（不看环境变量）：通过全部规则、freqtrade 自己的校验也通过、没有密钥
+    secrets = inline_secret_problems(file_cfg)
+    check("配置文件里没有密钥、Telegram Token、服务器 IP", not secrets, "；".join(secrets))
+    bad, _, facts = dryrun_config_problems(file_cfg, expect_strategy, expect_lev, CAPS_FILE)
+    check(f"配置本身：模拟盘、币安合约逐仓、策略 {expect_strategy}、NFI 要求的设置、自己的数据库、FreqUI 只听 127.0.0.1",
+          not bad, "；".join(bad) if bad else f"{facts['pairs']} 个交易对，数据库 {facts['db_url']}")
+    err = freqtrade_validation_error(file_cfg)
+    check("freqtrade 自己的配置校验通过（schema + 一致性，同 make validate）", not err, err)
+    check("dry_run = true、模拟资金 1000 USDT、FreqUI 端口 8081",
+          file_cfg.get("dry_run") is True and file_cfg.get("dry_run_wallet") == 1000
+          and _get(file_cfg, "api_server", "listen_port") == 8081,
+          f"{file_cfg.get('dry_run')} / {file_cfg.get('dry_run_wallet')} / {_get(file_cfg, 'api_server', 'listen_port')}")
+
+    # 7b 静态读 BenchmarkCaps.py：配置里的类是 1 倍版本，项目上限 5 倍
+    lev = caps_leverage_info(CAPS_FILE, expect_strategy)
+    check(f"BenchmarkCaps.py 里 {expect_strategy} 的杠杆封顶 = {expect_lev:g} 倍，MAX_LEVERAGE = 5（不导入 NFI，只解析源码）",
+          lev["found"] and lev["effective"] == expect_lev and lev["max_leverage"] == easytrade_risk.HARD_MAX_LEVERAGE
+          and not lev["own_leverage_method"], f"封顶 {lev['effective']}、上限 {lev['max_leverage']}")
+    capped = caps_leverage_info(CAPS_FILE, "NostalgiaForInfinityX8Capped")
+    bad5, _, _ = dryrun_config_problems({**file_cfg, "strategy": "NostalgiaForInfinityX8Capped"},
+                                         "NostalgiaForInfinityX8Capped", expect_lev, CAPS_FILE)
+    check("对照：换成 5 倍版本 NostalgiaForInfinityX8Capped 时拒绝（这个模拟盘最多 1 倍）",
+          capped["effective"] == 5.0 and any("杠杆封顶是 5 倍" in b for b in bad5), f"封顶 {capped['effective']}")
+
+    # 7c 环境变量能改配置（freqtrade 的机制），这些改法都必须被拒绝
+    def problems_with(**over) -> list[str]:
+        cfg = copy.deepcopy(file_cfg)
+        for dotted, val in over.items():
+            cur = cfg
+            parts = dotted.split("__")
+            for p in parts[:-1]:
+                cur = cur.setdefault(p, {})
+            cur[parts[-1]] = val
+        return dryrun_config_problems(cfg, expect_strategy, expect_lev, CAPS_FILE)[0]
+
+    cases = [
+        ("FREQTRADE__DRY_RUN=false（实盘）", {"dry_run": False}, "dry_run"),
+        ("FREQTRADE__API_SERVER__LISTEN_IP_ADDRESS=0.0.0.0（FreqUI 暴露到公网）", {"api_server__listen_ip_address": "0.0.0.0"}, "listen_ip_address"),
+        ("FREQTRADE__API_SERVER__ENABLED=false（看门狗没法暂停开仓）", {"api_server__enabled": False}, "api_server 没开"),
+        ("FREQTRADE__STRATEGY=NostalgiaForInfinityX8Capped（5 倍版本）", {"strategy": "NostalgiaForInfinityX8Capped"}, "策略应该是"),
+        ("FREQTRADE__FUTURES_MODE_LEVERAGE=10（NFI 的杠杆设置）", {"futures_mode_leverage": 10}, "futures_mode_leverage"),
+        ("FREQTRADE__FORCE_ENTRY_ENABLE=true（强制开仓可以自带杠杆）", {"force_entry_enable": True}, "force_entry_enable"),
+        ("FREQTRADE__MAX_OPEN_TRADES=12（和回测不一样）", {"max_open_trades": 12}, "max_open_trades"),
+        ("FREQTRADE__DB_URL=sqlite:///user_data/tradesv3.live.sqlite（实盘数据库）", {"db_url": "sqlite:///user_data/tradesv3.live.sqlite"}, "db_url"),
+        ("FREQTRADE__EXCHANGE__KEY=…（模拟盘不需要 API Key）", {"exchange__key": "dummy-not-a-key"}, "exchange.key"),
+        ("FREQTRADE__EXCHANGE__NAME=okx", {"exchange__name": "okx"}, "exchange.name"),
+    ]
+    for label, over, needle in cases:
+        found = problems_with(**over)
+        check(f"拒绝：{label}", any(needle in b for b in found), "；".join(found)[:120] or "（没拒绝）")
+    # 环境变量真的会被读进来（和 freqtrade 一样的读法）
+    old = os.environ.get("FREQTRADE__DRY_RUN")
+    os.environ["FREQTRADE__DRY_RUN"] = "false"
+    try:
+        env_cfg = load_dryrun_config(path, with_env=True)
+    finally:
+        if old is None:
+            os.environ.pop("FREQTRADE__DRY_RUN", None)
+        else:
+            os.environ["FREQTRADE__DRY_RUN"] = old
+    check("环境变量 FREQTRADE__DRY_RUN=false 会被读成 dry_run = False（检查读到的就是 freqtrade 读到的）",
+          env_cfg.get("dry_run") is False, repr(env_cfg.get("dry_run")))
+    leaky = inline_secret_problems({**copy.deepcopy(file_cfg), "telegram": {"token": "123456789:" + "A" * 35},
+                                    "api_server": {"listen_ip_address": "203.0.113.7"}})  # RFC 5737 documentation address, not a real server
+    check("对照：配置文件里写了 Telegram Token / 服务器 IP 时能查出来", len(leaky) >= 2, f"{len(leaky)} 项")
+
+    # 7d 用替身基类（不是 NFI）实际跑一遍 BenchmarkCaps.py：配置里的类在模拟盘里杠杆 <= 1，配置把杠杆改到 20 也没用
+    tmp = Path(tempfile.mkdtemp(prefix="easytrade-guard-caps-"))
+    try:
+        shutil.copy2(CAPS_FILE, tmp / CAPS_FILE_NAME)
+        (tmp / "NostalgiaForInfinityX8.py").write_text(_STUB_NFI, encoding="utf-8")
+        # BenchmarkCaps 把"超过 5 倍、改成 1 倍"记成 WARNING（模拟盘里有用），这里是故意的，不显示
+        logging.getLogger("easytrade_guard_benchmarkcaps").setLevel(logging.ERROR)
+        spec = importlib.util.spec_from_file_location("easytrade_guard_benchmarkcaps", str(tmp / CAPS_FILE_NAME))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        cfg = copy.deepcopy(file_cfg)
+        cfg.update({"runmode": RunMode.DRY_RUN, "candle_type_def": "futures", "futures_mode_leverage": 20.0,
+                    "futures_mode_leverage_short": 50.0, "user_data_dir": tmp})
+        s = getattr(mod, cfg["strategy"])(cfg)
+        s.bot_start()
+        levs = [s.leverage(pair="BTC/USDT:USDT", current_time=T0, current_rate=100.0, proposed_leverage=3.0,
+                           max_leverage=125.0, entry_tag=tag, side=side)
+                for side in ("long", "short") for tag in (None, "1", "61")]
+        attrs = {n: getattr(s, n) for n in dir(type(s)) if n.startswith("futures_mode_leverage")}
+        nums = [v for v in attrs.values() if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        check(f"替身基类要 10 倍、配置改成 20 / 50 倍：{cfg['strategy']} 实际杠杆全部 = 1 倍，futures_mode_leverage* 全部 <= 1",
+              all(v == 1.0 for v in levs) and nums and max(nums) <= 1.0,
+              f"leverage() = {sorted(set(levs))}，属性最大 {max(nums) if nums else '?'}")
+    except Exception as exc:  # 替身也跑不起来 = BenchmarkCaps.py 有问题
+        check("用替身基类实际跑 BenchmarkCaps.py", False, f"{type(exc).__name__}: {exc}")
+    finally:
+        sys.modules.pop("easytrade_guard_benchmarkcaps", None)
+        sys.modules.pop("easytrade_vendor_NostalgiaForInfinityX8", None)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # 7e 实际跑一次 scripts/run_dryrun.sh 的"只检查配置"模式（不联网、不启动机器人）
+    bash = shutil.which("bash")
+    if bash is None:
+        check("scripts/run_dryrun.sh（找不到 bash，跳过）", True)
+        return
+    script = str(ROOT_DIR / "scripts" / "run_dryrun.sh")
+    ok = subprocess.run([bash, script, "nfi", "--config-check-only"], cwd=ROOT_DIR, env=_clean_env(),
+                        capture_output=True, text=True, timeout=180)
+    tail = (ok.stdout + ok.stderr).strip().splitlines()
+    check("run_dryrun.sh nfi --config-check-only：干净的环境变量 → 通过（退出码 0）", ok.returncode == 0,
+          f"退出码 {ok.returncode}" + ("" if ok.returncode == 0 or not tail else f"；{tail[-1][:160]}"))
+    live = subprocess.run([bash, script, "nfi", "--config-check-only"], cwd=ROOT_DIR,
+                          env=_clean_env(FREQTRADE__DRY_RUN="false", FREQTRADE__EXCHANGE__KEY="dummy-not-a-key",
+                                         FREQTRADE__STRATEGY="NostalgiaForInfinityX8Capped"),
+                          capture_output=True, text=True, timeout=180)
+    out = live.stdout + live.stderr
+    check("run_dryrun.sh：FREQTRADE__DRY_RUN=false → 拒绝（退出码 20 = 安全检查不通过），API Key、FREQTRADE__STRATEGY 被去掉",
+          live.returncode == 20 and "dry_run 不是 true" in out and "exchange.key" not in out and "策略应该是" not in out,
+          f"退出码 {live.returncode}")
+    noapi = subprocess.run([bash, script, "nfi", "--config-check-only"], cwd=ROOT_DIR,
+                           env=_clean_env(FREQTRADE__API_SERVER__ENABLED="false"),
+                           capture_output=True, text=True, timeout=180)
+    check("run_dryrun.sh：FREQTRADE__API_SERVER__ENABLED=false → 拒绝（退出码 20：看门狗没法暂停开仓）",
+          noapi.returncode == 20 and "api_server 没开" in noapi.stdout + noapi.stderr, f"退出码 {noapi.returncode}")
+    for label, value, want in (("MAX_DD_PCT=30（比 15% 宽）", "30", 20), ("MAX_DD_PCT=abc", "abc", 20),
+                               ("MAX_DD_PCT=12（更严）", "12", 0)):
+        r = subprocess.run([bash, script, "nfi", "--config-check-only"], cwd=ROOT_DIR, env=_clean_env(MAX_DD_PCT=value),
+                           capture_output=True, text=True, timeout=180)
+        check(f"run_dryrun.sh：{label} → 退出码 {want}", r.returncode == want, f"退出码 {r.returncode}")
+    wd = subprocess.run([bash, script, "nfi-watchdog", "--status"], cwd=ROOT_DIR, env=_clean_env(MAX_DD_PCT="30"),
+                        capture_output=True, text=True, timeout=60)
+    check("run_dryrun.sh nfi-watchdog：MAX_DD_PCT=30 → 看门狗也不启动（退出码 20）", wd.returncode == 20,
+          f"退出码 {wd.returncode}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="实盘 / 模拟盘保护逻辑自检（不联网）")
+    ap.add_argument("--dryrun-config", metavar="配置文件",
+                    help="只检查一份模拟盘配置（文件 + 当前环境变量），scripts/run_dryrun.sh 启动前用")
+    ap.add_argument("--caps-file", metavar="BenchmarkCaps.py", help="（配合 --dryrun-config）检查哪个 BenchmarkCaps.py；默认冻结副本，没有就用仓库里的")
+    args = ap.parse_args(argv)
+    if args.dryrun_config:
+        return check_dryrun_config(args.dryrun_config, args.caps_file)
+
     test_stop_rescue()
     test_stop_invalid()
     test_expired_entry()
     test_volume_units()
     test_step2_risk()
     test_xsmomentum_live()
+    test_dryrun_config()
     print()
     if FAILS:
         print(f"有 {len(FAILS)} 项未通过：")

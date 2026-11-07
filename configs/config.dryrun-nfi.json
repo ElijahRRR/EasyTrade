@@ -1,0 +1,130 @@
+{
+    // ============================================================
+    // 第 4 轮：冻结版 NFI X8（1 倍杠杆）在币安 U 本位永续上的 模拟盘(dry-run，paper trading) 前向测试配置。
+    // 为什么做、在哪跑、怎么启动、什么时候停、跑完怎么判断：docs/forward-test.md
+    //
+    // !! 只能在币安允许访问的地区的服务器上运行（例如你那台跑 Rust 引擎的 Vultr 服务器）。
+    // !! 美国 IP 会被币安拒绝（HTTP 451）。美国 VPS 继续只做 OKX 回测。
+    //
+    // 启动：bash scripts/run_dryrun.sh nfi --check-only（先检查），没问题再 bash scripts/run_dryrun.sh nfi。
+    //   不要直接用 freqtrade trade 启动：脚本会先核对 NFI 是固定版本、冻结一份策略代码副本、检查这份配置只能跑模拟盘、
+    //   币安连不连得上、内存和硬盘够不够，然后才启动（还会加上 freqtrade 自己的 --dry-run 开关）。
+    // 只用于模拟盘：dry_run 固定 true。这份配置不能拿去跑实盘（scripts/check_live_guards.py 有回归检查）。
+    // 密钥：这里一个都不写。FreqUI 账号密码、Telegram Token 来自 .env.dryrun-nfi（权限 600，不进 git，见 docs/forward-test.md）；
+    //   模拟盘不需要币安 API Key，scripts/run_dryrun.sh 会把环境变量里的 Key 去掉。
+    //
+    // NFI 要求 / 推荐的设置（来源：NFI 固定版本 74c03087b8ced3899509ba8d36f5f1565bc5f49a 的 README「General Recommendations」、
+    // 策略文件开头的说明、configs/exampleconfig.json 和 exampleconfig_secret.json，都是当作文本读的；对照表见 docs/forward-test.md 第 4 节）：
+    //   * 同时 6 个仓位、stake 用 unlimited；use_exit_signal true、exit_profit_only false、ignore_roi_if_entry_signal true；
+    //     timeframe 5m（和策略自己的一样，写出来只是为了看得清楚）；限价单 3 / 2 分钟没成交就撤；
+    //   * 下单全部用限价单、止损不挂在交易所（NFI 的名义止损是 -99%，靠策略内部规则平仓）；
+    //   * 取价：price_side = "other"（买入看卖一、卖出看买一）、用订单簿（币安合约的 ticker 没有价格，freqtrade 要求必须用订单簿）。
+    //   和逐年回测（docs/nfi-yearly.md）一样、没照搬 NFI 例子的：初始资金 1000 USDT（它是 10000）、tradable_balance_ratio 0.95（它是 0.99）、
+    //   固定交易对（它推荐 40 ~ 80 个按成交量的动态列表）、force_entry_enable false（强制开仓可以自带杠杆，绕过 1 倍封顶）。
+    //   不写任何杠杆设置（futures_mode_leverage*、nfi_parameters）：写了也会被 1 倍封顶，写在这里只会让人误会。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json",
+        "pairs.binance-research.json",
+        "config.notify-zh.json"
+    ],
+
+    // 机器人名字：NFI 的止盈目标缓存文件名里带它（user_data/nfix8-profit_max-easytrade-nfi-dryrun-binance-USDT.json），
+    // 和别的机器人分开
+    "bot_name": "easytrade-nfi-dryrun",
+
+    // 策略：NFI X8 固定版本 + 本项目的 1 倍封顶子类（user_data/strategies/benchmarks/BenchmarkCaps.py，每一条杠杆路径都封顶 1 倍）
+    "strategy": "NostalgiaForInfinityX8Lev1",
+    // 策略代码的冻结副本：scripts/run_dryrun.sh 第一次启动时从 BenchmarkCaps.py 和 user_data/strategies/vendor/ 复制过来、
+    // 记下 sha256（FROZEN.txt）。之后 git pull、重新下载 vendor/ 都不影响这一轮模拟盘
+    "strategy_path": "user_data/dryrun/nfi-strategy",
+    "timeframe": "5m",
+
+    // 自己的数据库（不和别的机器人、别的模拟盘混在一起）。scripts/run_dryrun.sh 启动时也会用 --db-url 明确传这个值
+    "db_url": "sqlite:///user_data/dryrun/nfi.sqlite",
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "max_open_trades": 6,
+    "initial_state": "running",
+    "force_entry_enable": false,
+    "cancel_open_orders_on_exit": false,
+
+    "use_exit_signal": true,
+    "exit_profit_only": false,
+    "ignore_roi_if_entry_signal": true,
+
+    "unfilledtimeout": {
+        "entry": 3,
+        "exit": 2,
+        "exit_timeout_count": 0,
+        "unit": "minutes"
+    },
+
+    "order_types": {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "limit",
+        "force_entry": "limit",
+        "force_exit": "limit",
+        "stoploss": "limit",
+        "stoploss_on_exchange": false,
+        "stoploss_on_exchange_interval": 60,
+        "stoploss_on_exchange_limit_ratio": 0.99
+    },
+    "order_time_in_force": {
+        "entry": "GTC",
+        "exit": "GTC"
+    },
+
+    "entry_pricing": {
+        "price_side": "other",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+    "exit_pricing": {
+        "price_side": "other",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0
+    },
+
+    "exchange": {
+        "name": "binance",
+        // 留空。模拟盘不需要 API Key（freqtrade 的 --dry-run 也会把它去掉）
+        "key": "",
+        "secret": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {},
+        // 交易对 = pairs.binance-research.json（60 个币，和第 3 轮研究的是同一批），去掉 NFI 固定版本
+        // configs/blacklist-binance.json 里拉黑的两个（STX、BLUR）。别的 58 个都不在它的黑名单里（按固定版本核对过）
+        "pair_blacklist": [
+            "(BLUR|STX)/.*"
+        ]
+    },
+
+    // 固定交易对：整个前向测试期间币不变，结果才能和回测对得上、也能复现
+    "pairlists": [
+        { "method": "StaticPairList" }
+    ],
+
+    // FreqUI / REST API：只监听 127.0.0.1:8081，远程用 SSH 隧道看（docs/forward-test.md 第 6 节）。
+    // 账号密码来自 .env.dryrun-nfi：FREQTRADE__API_SERVER__USERNAME / PASSWORD / JWT_SECRET_KEY / WS_TOKEN。
+    // 端口 8081 和 config.binance-xsmomentum.json 相同：两个不要同时在一台服务器上跑（或者用 FREQTRADE__API_SERVER__LISTEN_PORT 改一个）。
+    "api_server": {
+        "enabled": true,
+        "listen_ip_address": "127.0.0.1",
+        "listen_port": 8081
+    }
+}

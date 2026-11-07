@@ -17,8 +17,8 @@
   * 研究脚本里每个策略都是用整个 1000 USDT 单独回测的。策略按"账户权益 × 每笔风险 ÷ 止损距离"定仓，
     仓位和账户权益成正比，所以分到 C·w_i 的子账户，资金曲线就是 策略自己的资金曲线 × (C·w_i / 1000)。
     （没考虑最小下单量：钱少了以后有些小单开不出来，见下面"最小下单额检查"。）
-  * 每个策略的资金曲线 = 已平仓余额 + 持仓浮动盈亏，逐根K线计算，算法和 scripts/check_drawdown.py 的
-    mtm_drawdown_candles 完全相同（用它的工具函数；scripts/check_portfolio_math.py 核对两者回撤逐位一致）。
+  * 每个策略的资金曲线 = 已平仓余额 + 持仓浮动盈亏，逐根K线计算，直接用 scripts/check_drawdown.py 的
+    equity_curve_candles（加仓 / 分批平仓的交易按逐笔订单重建持仓；scripts/check_portfolio_math.py 核对和排名表回撤逐位一致）。
   * 各子账户曲线放到同一条按小时的时间轴上（没有持仓时保持上一个值），相加 = 组合权益曲线。
     回撤 = 组合权益从最高点到最低点的跌幅（每根K线内取各子账户"最不利价格"时的权益相加，偏保守）。
   * 区间：训练段、没看过的一段（训练段里以前的研究没用过的那部分，有的话）、样本外、
@@ -166,85 +166,9 @@ def candle_curve(
     data_format: str,
     trading_mode: str,
 ) -> dict[str, Any] | None:
-    """逐根K线的账户权益曲线。和 check_drawdown.mtm_drawdown_candles 是同一个算法（那个函数只返回最大回撤，
-    这里把整条曲线留下来）。缺K线数据时返回 None。改算法时两边一起改，再跑 scripts/check_portfolio_math.py。"""
-    try:
-        import numpy as np
-        import pandas as pd
-    except ImportError:
-        return None
-    if not infos:
-        return flat_curve(start_balance)
-    tf_sec = cd._tf_seconds(timeframe)
-    if tf_sec <= 0:
-        return None
-    ext = {"feather": "feather", "parquet": "parquet"}.get(data_format)
-    if ext is None:
-        return None
-    sub = datadir / "futures" if trading_mode == "futures" else datadir
-    suffix = "-futures" if trading_mode == "futures" else ""
-    grid_tfs = (["1h"] if tf_sec > 3600 else []) + [timeframe]
-
-    def load(pair: str, tf: str):
-        f = sub / f"{cd._pair_file(pair)}-{tf.replace('M', 'Mo')}{suffix}.{ext}"
-        if not f.is_file():
-            return None
-        df = pd.read_feather(f) if ext == "feather" else pd.read_parquet(f)
-        dates = pd.to_datetime(df["date"], utc=True)
-        secs = ((dates - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(seconds=1)).to_numpy("int64")
-        return secs, df["high"].to_numpy("float64"), df["low"].to_numpy("float64"), df["close"].to_numpy("float64")
-
-    grid_tf = None
-    candles: dict[str, Any] = {}
-    for tf in grid_tfs:
-        loaded = {p: load(p, tf) for p in {t["pair"] for t in infos}}
-        if all(v is not None for v in loaded.values()):
-            grid_tf, candles = tf, loaded
-            break
-    if grid_tf is None:
-        return None
-    g_sec = cd._tf_seconds(grid_tf)
-    t0 = int(min(t["open"] for t in infos) // g_sec * g_sec)
-    t1 = int(max(t["close"] for t in infos) // g_sec * g_sec + g_sec)
-    grid = np.arange(t0, t1 + 1, g_sec, dtype="int64")
-    n = len(grid)
-    unreal_low = np.zeros(n)
-    unreal_end = np.zeros(n)
-    closed_before = np.zeros(n)
-    closed_end = np.zeros(n)
-    for tr in infos:
-        secs, high, low, close = candles[tr["pair"]]
-        k0 = int(np.searchsorted(grid, tr["open"] - g_sec, side="right"))
-        k1 = int(np.searchsorted(grid, tr["close"], side="left"))
-        if k1 > k0:
-            ts = grid[k0:k1]
-            pos = np.searchsorted(secs, ts)
-            pos = np.clip(pos, 0, len(secs) - 1)
-            have = secs[pos] == ts
-            bad = np.where(have, high[pos] if tr["dir"] < 0 else low[pos], tr["open_rate"])
-            last = ts + g_sec > tr["close"]
-            if tr["stop_exit"] and last.any():
-                cap = tr["close_rate"]
-                bad = np.where(last, np.minimum(bad, cap) if tr["dir"] < 0 else np.maximum(bad, cap), bad)
-            unreal_low[k0:k1] += cd._upnl(tr, bad)
-            hold = ts + g_sec < tr["close"]
-            if hold.any():
-                end_px = np.where(have, close[pos], tr["open_rate"])
-                unreal_end[k0:k1] += np.where(hold, cd._upnl(tr, end_px), 0.0)
-        kb = int(np.searchsorted(grid, tr["close"], side="left"))
-        closed_before[kb:] += tr["profit"]
-        ke = int(np.searchsorted(grid, tr["close"] - g_sec, side="left"))
-        closed_end[ke:] += tr["profit"]
-    return {
-        "grid": grid,
-        "g": g_sec,
-        "low": start_balance + closed_before + unreal_low,
-        "end": start_balance + closed_end + unreal_end,
-        "start": float(start_balance),
-        "final": float(start_balance + sum(t["profit"] for t in infos)),
-        "method": f"K线({grid_tf})",
-        "closes": [(t["close"], t["profit"]) for t in infos],
-    }
+    """逐根K线的账户权益曲线：直接用 scripts/check_drawdown.py 的 equity_curve_candles（排名表回撤的同一个函数；
+    加仓 / 分批平仓的交易按逐笔订单重建持仓）。缺K线数据时返回 None。"""
+    return cd.equity_curve_candles(infos, start_balance, timeframe, datadir, data_format, trading_mode)
 
 
 def closed_curve(infos: list[dict[str, Any]], start_balance: float, g_sec: int = 3600) -> dict[str, Any]:

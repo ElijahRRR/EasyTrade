@@ -24,6 +24,10 @@ user_data/freqaimodels/
 # 第 2 步策略研究（scripts/research.sh）的结果目录，和 hyperopt 的锁文件
 user_data/research/
 user_data/hyperopt.lock
+# 第 4 轮币安模拟盘（scripts/run_dryrun.sh）：数据库、日志、看门狗状态、冻结的策略代码副本（含 NFI，GPL-3.0）；
+# 以前几轮留档的目录（user_data/dryrun.round-<日期>/，见 docs/forward-test.md 第 12 节）
+user_data/dryrun/
+user_data/dryrun.*/
 user_data/*.sqlite
 user_data/*.sqlite-*
 *.sqlite
