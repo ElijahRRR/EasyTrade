@@ -13,11 +13,11 @@ ARGS ?=
 export FT_RUNNER
 
 .DEFAULT_GOAL := help
-.PHONY: help venv pull validate download backtest check research research-synthetic research-benchmarks synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
+.PHONY: help venv pull validate download backtest check research research-synthetic research-benchmarks research-nfi-yearly research-nfi-yearly-synthetic synthetic-data synthetic-test guard-test forward-check pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build dryrun-nfi-check dryrun-nfi forward-report watchdog
 
 help:  ## 显示本帮助
 	@echo "可用命令（make <目标>）："
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-30s %s\n", $$1, $$2}'
 
 venv:  ## 创建 .venv 并安装固定版本的 freqtrade（需要 Python >= 3.12）
 	python3 -m venv .venv
@@ -32,7 +32,7 @@ pull:  ## 拉取 Docker 镜像
 
 validate:  ## 校验所有入口配置（freqtrade show-config）
 	@source scripts/_common.sh; \
-	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.binance-xsmomentum.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json; do \
+	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.binance-xsmomentum.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json configs/config.dryrun-nfi.json; do \
 		if ft show-config --config $$c > /dev/null 2>&1; then echo "通过  $$c"; \
 		else echo "失败  $$c"; ft show-config --config $$c 2>&1 | tail -n 20; exit 1; fi; \
 	done
@@ -55,14 +55,24 @@ research-synthetic:  ## 用合成数据离线跑一遍策略研究流程（不�
 research-benchmarks:  ## 基准策略研究：别人公开的策略（freqtrade-strategies、NFI）用同一套流程比较，只用默认参数（先 bash scripts/fetch_benchmarks.sh；见 docs/benchmarks.md）
 	bash scripts/research_benchmarks.sh $(ARGS)
 
+# 用法例子：make research-nfi-yearly ARGS='--classes "Lev1 Lev2" --years 2021-2023 --pairs 10'
+research-nfi-yearly:  ## 第 4 轮 NFI X8 逐年回测：固定版本，1 倍/2 倍/5 倍封顶三个版本，2021 年起每年单独回测，给出能不能上模拟盘的结论（先 bash scripts/fetch_benchmarks.sh；很慢，在 tmux 里跑；见 docs/nfi-yearly.md）
+	bash scripts/research_nfi_yearly.sh $(ARGS)
+
+research-nfi-yearly-synthetic:  ## 用合成数据和替身策略试跑一遍逐年回测流程（不下载、不用 NFI，只检查脚本能跑通，约 10 分钟）
+	bash scripts/research_nfi_yearly.sh --synthetic
+
 synthetic-data:  ## 生成合成测试数据（不是真实行情，只用于流程自检）
 	@source scripts/_common.sh; FT_RUNNER_RESOLVED=synthetic; py_ft scripts/make_synthetic_data.py $(ARGS)
 
 synthetic-test:  ## 用合成数据离线自检整条流程（回测 + 回撤检查 + 未来函数检查）
 	bash scripts/synthetic_test.sh $(ARGS)
 
-guard-test:  ## 实盘保护逻辑自检（止损补救、只在信号刚收盘时入场；不联网，几秒钟）
-	@source scripts/_common.sh; py_ft scripts/check_live_guards.py
+guard-test:  ## 实盘保护逻辑 + 回撤算法 + 模拟盘工具自检（止损补救、只在信号刚收盘时入场、模拟盘配置、加仓/分批平仓的含浮亏回撤、前向报告和看门狗；不联网，十几秒）
+	@source scripts/_common.sh; py_ft scripts/check_live_guards.py && py_ft scripts/check_drawdown_math.py && py_ft scripts/check_forward_tools.py
+
+forward-check:  ## 只跑前向报告 + 看门狗自检（合成数据库 + 本机假接口，不联网，几秒钟；make guard-test 也会跑）
+	@source scripts/_common.sh; py_ft scripts/check_forward_tools.py
 
 pairs:  ## 按 OKX 当前成交额重新生成交易对列表
 	bash scripts/update_okx_pairs.sh $(ARGS)
@@ -102,3 +112,16 @@ zh-install:  ## [venv] 把 frequi-zh/dist 装进 .venv 里的 freqtrade（替换
 
 docker-build:  ## [Docker] 构建带中文 FreqUI 的镜像（ui / freqtrade 服务用；改补丁或升级后执行）
 	$(COMPOSE) --profile ui --profile trade build ui freqtrade
+
+# ---------- 第 4 轮：币安模拟盘前向测试（冻结版 NFI X8，1 倍杠杆；只能在币安允许访问的地区的服务器上运行；见 docs/forward-test.md） ----------
+dryrun-nfi-check:  ## [venv] 币安模拟盘（冻结版 NFI 1 倍）启动前检查，不启动（只能在币安允许访问的地区运行；见 docs/forward-test.md）
+	bash scripts/run_dryrun.sh nfi --check-only
+
+dryrun-nfi:  ## [venv] 启动币安模拟盘（冻结版 NFI 1 倍，前台运行；长期运行用 systemd，见 docs/forward-test.md 第 7 节）
+	bash scripts/run_dryrun.sh nfi
+
+forward-report:  ## 模拟盘前向报告：只读模拟盘数据库，算含浮亏回撤、胜率、盈亏比，对照成功标准（先 freqtrade download-data 补K线；退出码 3 = 回撤超限或看门狗正处于暂停；见 docs/forward-monitoring.md）
+	@source scripts/_common.sh; py_ft scripts/forward_report.py $(ARGS)
+
+watchdog:  ## [venv] 账户权益看门狗（前台运行，Ctrl+C 停止；长期跑用 systemd 实例 easytrade-dryrun@nfi-watchdog）：含浮亏回撤超过 15% 就停止开新仓、发中文告警
+	bash scripts/run_dryrun.sh nfi-watchdog $(ARGS)

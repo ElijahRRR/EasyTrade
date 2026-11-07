@@ -1,0 +1,61 @@
+# ------------------------------------------------------------------
+# systemd 模板：在服务器上长期运行 EasyTrade 的币安模拟盘（前向测试）和账户权益看门狗。
+# 说明：docs/forward-test.md 第 7 节。只能装在币安允许访问的地区的服务器上（例如你那台 Vultr 服务器）。
+#
+# 一个模板，两个实例（@ 后面的名字原样交给 scripts/run_dryrun.sh）：
+#   easytrade-dryrun@nfi.service            模拟盘机器人：bash scripts/run_dryrun.sh nfi
+#                                           （每次启动先做全部检查，不通过就不启动；通过后 freqtrade trade --dry-run）
+#   easytrade-dryrun@nfi-watchdog.service   账户权益看门狗：bash scripts/run_dryrun.sh nfi-watchdog
+#                                           （= scripts/equity_watchdog.py，回撤超过 15% 就停止开新仓、等人工检查）
+#
+# 安装（在仓库目录里运行；把 __USER__ 换成运行机器人的 Linux 用户（不要用 root），__DIR__ 换成仓库的完整路径）：
+#   sed -e "s#__USER__#$(id -un)#g" -e "s#__DIR__#$(pwd)#g" docs/systemd/easytrade-dryrun@.service \
+#       | sudo tee /etc/systemd/system/easytrade-dryrun@.service > /dev/null
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now easytrade-dryrun@nfi
+#   sudo systemctl enable --now easytrade-dryrun@nfi-watchdog
+#
+# 密钥文件：__DIR__/.env.dryrun-nfi（FreqUI 账号密码、可选的 Telegram；不进 git），权限必须是 600：
+#   chmod 600 .env.dryrun-nfi        （权限不对 scripts/run_dryrun.sh 会拒绝启动）
+#   两个实例都读这一个文件。不要放币安 API Key（模拟盘用不到，脚本也会去掉）。
+#
+# 常用：
+#   systemctl status easytrade-dryrun@nfi             # 在不在跑；没跑起来时最后几行就是原因
+#   journalctl -u easytrade-dryrun@nfi -n 100         # 启动检查的输出、freqtrade 的日志
+#   tail -f __DIR__/user_data/dryrun/nfi.log          # freqtrade 完整日志（自动滚动，最多约 110 MB）
+#   sudo systemctl stop easytrade-dryrun@nfi          # 停止（freqtrade 收到 SIGTERM 正常退出，持仓留在数据库里）
+#   sudo systemctl restart easytrade-dryrun@nfi       # 重启（还是这一轮：同一个数据库、同一份冻结的策略代码）
+#
+# 重启规则：
+#   * 启动前检查不通过（scripts/run_dryrun.sh 退出码 20 安全检查 / 21 地区不能用币安 / 22 内存硬盘不够）：不自动重启，要人来看；
+#   * 连不上币安（23）、freqtrade 出错退出（1 / 2）：60 秒后自动重启；1 小时内最多 5 次，再失败就停下（systemctl status 看原因）；
+#   * 正常停止（0、130 = 收到停止信号）：不重启。
+# ------------------------------------------------------------------
+[Unit]
+Description=EasyTrade 币安模拟盘 %i（前向测试，docs/forward-test.md）
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=3600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+# 密钥（FreqUI 账号密码、Telegram）。文件不存在时 systemd 直接报错、不启动
+EnvironmentFile=__DIR__/.env.dryrun-nfi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash __DIR__/scripts/run_dryrun.sh %i
+Restart=on-failure
+RestartSec=60
+RestartPreventExitStatus=20 21 22
+SuccessExitStatus=130
+# freqtrade 收到 SIGTERM 后会正常收尾再退出，给它 2 分钟
+TimeoutStopSec=120
+# 基本的加固：不能提权、自己的 /tmp、/usr /boot /etc 只读（仓库目录照常可写）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
