@@ -1,0 +1,198 @@
+{
+  "round": 5,
+  "spec_doc": "docs/round5-preregistration.md",
+  "frozen": "2026-11-07",
+  "run_settings": {
+    "_note": "规格 2 节和 3.3 节冻结的运行设置（scripts/research.sh 把这次的实际值传给 check_prereg.py --settings 对照，不一样 = 拒绝正式运行）。策略和阶段的 run_settings 覆盖这里的同名项。",
+    "fee": 0.0007,
+    "max_dd": 15,
+    "min_trades": 30,
+    "pf_ratio": 0.6,
+    "min_pf": 1.2,
+    "start": "20210101",
+    "seen_from": "20240101",
+    "wf_folds": 6,
+    "wf_train_days": 365,
+    "wf_test_days": 180,
+    "wf_mode": "rolling",
+    "hyperopt": 0,
+    "detail": "auto",
+    "min_train_days": 365,
+    "warmup_candles": 600,
+    "keep_delisted": 0,
+    "pre_holdout": "",
+    "pre_holdout_pairs": ""
+  },
+  "strategies": {
+    "XSFundingCarry": {
+      "file": "user_data/strategies/XSFundingCarry.py",
+      "class": "XSFundingCarry",
+      "sha256": "7648627206d35c91777058a4bd0088bb20a919860d4c42bdbe5a3f0628da30ce",
+      "venue": "binance",
+      "config": "configs/config.binance-research.json",
+      "override": "configs/research-overrides/XSFundingCarry.json",
+      "timeframe": "1d",
+      "params": {
+        "lookback_days": 7,
+        "bucket": "tercile",
+        "rebalance_days": 7
+      },
+      "min_pf": 1.1,
+      "min_pf_pending_decision": "预注册 2.1 节：规格默认不改规则（1.2）；市场中性账户用 1.1 是推荐选项，David 要在正式运行之前二选一（1.1 或 1.2），定下来以后删掉这一项",
+      "min_pf_options": [
+        1.1,
+        1.2
+      ],
+      "min_pf_spec_default": 1.2,
+      "extra_checks": [
+        {
+          "type": "funding_net_positive"
+        },
+        {
+          "type": "zero_funding_share_invalid",
+          "max_share": 0.95
+        }
+      ],
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "user_data/strategies/rust_port_common.py": "c6eb3746ccfc73478fd26ec433ae47258c243549f3b46be0d85f0ee7aac5de95",
+        "configs/research-overrides/XSFundingCarry.json": "4dfa6f2da45bcdf51704693762dd32ffa32be5f25cf04bd8cc3529f9731e93b2"
+      },
+      "run_settings": {
+        "pre_holdout": "20200101-20201231"
+      }
+    },
+    "PremiumFade": {
+      "file": "user_data/strategies/PremiumFade.py",
+      "class": "PremiumFade",
+      "sha256": "146ffb3f06403b35443c34b9c3fdee644c8ecffd4c3b934b2d78c69bfd22f91e",
+      "venue": "okx",
+      "config": "configs/config.okx-research.json",
+      "timeframe": "1h",
+      "params": {
+        "z_threshold": 3.0,
+        "window_bars": 720,
+        "max_hold_bars": 48
+      },
+      "min_pf": 1.2,
+      "extra_checks": [
+        {
+          "type": "max_trades_per_pair_year",
+          "value": 30
+        },
+        {
+          "type": "min_tradable_pairs",
+          "value": 20
+        }
+      ],
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e"
+      },
+      "run_settings": {
+        "pre_holdout": "20200101-20201231"
+      }
+    },
+    "CapitulationRebound": {
+      "file": "user_data/strategies/CapitulationRebound.py",
+      "class": "CapitulationRebound",
+      "sha256": "b67cfd55956119e90233898b62226060350cdfafad9bca8f9abbcec1d95b28c9",
+      "venues": [
+        "okx",
+        "binance"
+      ],
+      "stages": {
+        "1": {
+          "venue": "okx",
+          "config": "configs/config.okx-research.json",
+          "note": "OKX 研究币池 60 个币，美国 VPS；不通过 = 失败",
+          "run_settings": {
+            "pre_holdout": "20200101-20201231"
+          }
+        },
+        "2": {
+          "venue": "binance",
+          "note": "只有第一阶段通过才跑：币安 2021-2026，包括已下架的币；在币安服务地区的服务器上跑，配置和币池在那之前定好并写进 changes",
+          "run_settings": {
+            "keep_delisted": 1
+          }
+        }
+      },
+      "override": "configs/research-overrides/CapitulationRebound.json",
+      "timeframe": "1d",
+      "params": {
+        "k_sigma": 3.0,
+        "volume_mult": 2.0,
+        "max_hold_days": 5
+      },
+      "min_pf": 1.2,
+      "extra_checks": [
+        {
+          "type": "drop_top_days",
+          "n": 3,
+          "segments": [
+            "unseen",
+            "oos"
+          ]
+        }
+      ],
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "configs/research-overrides/CapitulationRebound.json": "92579b5d1e6d84a925469d179ca7119553ff008300d9332fd2cf255fd15c0400"
+      }
+    },
+    "NewListingShortHedged": {
+      "file": "user_data/strategies/NewListingShortHedged.py",
+      "class": "NewListingShortHedged",
+      "sha256": "8c7b07da4ffe88dc4b7dde872a5f95cb9a0aaec31d0d60b4706d6b83f852e032",
+      "venues": [
+        "okx",
+        "binance"
+      ],
+      "stages": {
+        "1": {
+          "venue": "okx",
+          "config": "configs/config.okx-research-listings.json",
+          "note": "OKX 全部 USDT 永续，美国 VPS；没有资金费，只算上限：不通过 = 失败，通过还不算数",
+          "run_settings": {
+            "min_train_days": 0,
+            "warmup_candles": 0,
+            "keep_delisted": 1
+          }
+        },
+        "2": {
+          "venue": "binance",
+          "note": "币安 2021-2026 全部 U 本位新上线币，带真实资金费和标记价格；在币安服务地区的服务器上跑，配置在那之前定好并写进 changes",
+          "run_settings": {
+            "min_train_days": 0,
+            "warmup_candles": 0,
+            "keep_delisted": 1,
+            "pre_holdout": "20200101-20201231"
+          }
+        }
+      },
+      "override": "configs/research-overrides/NewListingShortHedged.json",
+      "timeframe": "1d",
+      "params": {
+        "entry_delay_days": 14,
+        "exit_age_days": 120,
+        "stop_pct": 0.4
+      },
+      "min_pf": 1.2,
+      "extra_checks": [
+        {
+          "type": "count_tags_exclude",
+          "tags": [
+            "hedge"
+          ]
+        }
+      ],
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "user_data/strategies/rust_port_common.py": "c6eb3746ccfc73478fd26ec433ae47258c243549f3b46be0d85f0ee7aac5de95",
+        "configs/research-overrides/NewListingShortHedged.json": "31e21762e621027f1d6b3ec084ee66c3fe2b06a76b49d91ffdb628e1c7d580e4"
+      }
+    }
+  },
+  "changes": [],
+  "formal_runs": []
+}

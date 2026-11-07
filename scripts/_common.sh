@@ -91,4 +91,16 @@ py_ft() {
     esac
 }
 
+# 用法：plain_py <python 脚本> [参数...]  —— 只用 Python 标准库、又要在本机运行的脚本（例如 scripts/check_prereg.py
+# 要读本机的 git 提交号，Docker 容器里没有 git）：.venv > PATH 里的 python3 > py_ft
+plain_py() {
+    if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+        "$ROOT_DIR/.venv/bin/python" "$@"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 "$@"
+    else
+        py_ft "$@"
+    fi
+}
+
 detect_runner

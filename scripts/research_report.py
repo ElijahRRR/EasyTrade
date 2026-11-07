@@ -11,6 +11,11 @@
   report       汇总成中文排名表：summary.txt / summary.csv / summary.json
                回撤上限按 plan.json 里记的值判（研究运行时的 --max-dd / MAX_DD_PCT，默认 15% = 项目硬规则）；
                加 --max-dd 12 可以按别的上限重新判一次（不重跑回测、不改 plan.json，报告抬头会注明）
+               第 5 轮：读预注册登记表 configs/preregistration.json（--prereg 可以换文件；没有这个文件 = 全部按默认规则），
+               登记的策略用自己的盈亏因子门槛（min_pf）和"算失败的情况"（extra_checks），每一段都查盈亏因子和交易数；
+               另外几张只报告的表：每段资金费合计和资金费为 0 的交易占比、平均每币每年交易数、能交易的币、
+               逐年表（每个日历年的收益和含浮亏回撤）、2020 留出段（RESEARCH_PRE_HOLDOUT，jobs.tsv 里的段名 preholdout）、
+               事件集中度（去掉盈利最多的几个入场日后重算）。自检：scripts/check_report_round5.py
 
 账户回撤口径和 scripts/check_drawdown.py 完全一样（直接调用它的函数）：
 账户权益 = 已平仓余额 + 所有持仓的浮动盈亏，逐根K线计算。
@@ -1070,9 +1075,667 @@ def funding_estimate(plan: dict[str, Any], r: dict[str, Any] | None) -> dict[str
 
 
 # ----------------------------------------------------------------------------
+# 第 5 轮：预注册登记表（configs/preregistration.json）
+# ----------------------------------------------------------------------------
+# 登记表里每个策略可以有自己的盈亏因子门槛（min_pf）和"算失败的情况"（extra_checks，预注册第 2 节）。
+# 没登记的策略（第 1 ~ 4 轮的）照旧按 plan.json 的 settings 判，结果和以前逐字相同。
+# 登记表的格式（integrator 写，见 docs/round5-preregistration.md）：
+#   {"round": 5, "spec_doc": "...", "strategies": {"<类名>": {"file", "sha256", "venue", "stage", "params",
+#     "min_pf": 1.2 | {"value": 1.1, "pending_decision": true, "note": "..."},
+#     "min_pf_pending_decision": true | "说明"（可选，和上面对象写法二选一）,
+#     "extra_checks": [{"type": ...}, ...]}}, "changes": [...]}
+PREREG_DEFAULT = ROOT_DIR / "configs" / "preregistration.json"
+CHECK_TYPES = (
+    "funding_net_positive", "zero_funding_share_invalid", "max_trades_per_pair_year",
+    "min_tradable_pairs", "drop_top_days", "count_tags_exclude",
+)
+# 登记表里的段名 -> 研究脚本的段名
+SEG_ALIAS = {"unseen": "holdout", "holdout": "holdout", "oos": "test", "test": "test", "train": "train", "wf": "wf"}
+SEG_CN5 = {"train": "训练段", "holdout": "没看过的一段", "test": "样本外", "wf": "走步拼接", "all": "全期",
+           "preholdout": "2020 留出段"}
+VERDICT_CN = {"PASS": "通过", "FAIL": "未通过", "INVALID": "无效", "UNTESTABLE": "测不了", "ERROR": "出错"}
+VERDICT_ORDER = {"PASS": 0, "FAIL": 1, "UNTESTABLE": 2, "INVALID": 3, "ERROR": 4}
+# 2020 留出段（预注册第 3.3 节，RESEARCH_PRE_HOLDOUT）：jobs.tsv 里的段名（两种写法都认）
+PRE_HOLDOUT_SEGMENTS = ("preholdout", "pre_holdout")
+# 事件集中度表（只报告）：没登记 drop_top_days 的策略也按预注册第 4 节第 6 条的默认做法列出来
+EVENT_TOP_DAYS_DEFAULT = 3
+EVENT_SEGMENTS_DEFAULT = ("holdout", "test")
+# PremiumFade 日志里的固定标记（和 user_data/strategies/PremiumFade.py 相同，改的话两边一起改）：
+# 有这种标记的策略，"能交易的币" = 数据条件满足过（z 有值的K线 > 0）的币
+# 最小下单额提醒里"前 K 名、名额空到下一个调仓日"的说法只适用于按调仓日排名的截面策略
+XS_SLOT_STRATEGIES = ("XSMomentum", "XSFundingCarry")
+SPOT_MISSING_TAG = "[现货数据:没有]"
+SPOT_COVERAGE_TAG = "[现货数据:覆盖]"
+_COVERAGE_USABLE_RE = re.compile(r"有值的\s*K\s*线\s*(\d+)\s*根")
+
+
+def _read_jsonc(path: Path) -> Any:
+    """JSON（允许 // 注释和多余的逗号，和 configs/ 下的配置一样）。"""
+    text = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(text)
+    except ValueError:
+        import rapidjson  # freqtrade 自带
+
+        return rapidjson.loads(text, parse_mode=rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS)
+
+
+def load_prereg(path: str | Path | None = None) -> dict[str, Any]:
+    """读登记表。返回 {"path", "sha256", "data", "error", "explicit"}。
+
+    path 为空 = configs/preregistration.json（没有这个文件 = 空登记表，全部按默认规则）；
+    给了 path 但文件不存在 / 读不出来、或默认文件读不出来 = error（报告不生成：登记表坏了，第 5 轮的检查会悄悄不做）。
+    """
+    import hashlib
+
+    explicit = bool(path)
+    p = Path(path) if path else PREREG_DEFAULT
+    out: dict[str, Any] = {"path": str(p), "sha256": "", "data": {}, "error": "", "explicit": explicit, "found": False}
+    if not p.is_file():
+        if explicit:
+            out["error"] = f"找不到登记表 {p}"
+        return out
+    try:
+        raw = p.read_bytes()
+        data = _read_jsonc(p)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"登记表 {p} 读不出来（{exc.__class__.__name__}: {exc}）"
+        return out
+    if not isinstance(data, dict) or not isinstance(data.get("strategies", {}), dict):
+        out["error"] = f"登记表 {p} 的格式不对（要有 \"strategies\": {{类名: {{...}}}}）"
+        return out
+    out.update(found=True, data=data, sha256=hashlib.sha256(raw).hexdigest())
+    return out
+
+
+def prereg_snapshot(plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """正式运行（plan.json 的 prereg.formal_run 为真）用运行时记下的登记表快照判，不用现在的登记表。
+
+    快照 = scripts/check_prereg.py 写进 plan.json 的每个登记策略的 registry_entry（运行时登记表里这个策略的原文）。
+    预注册要求规则在回测之前定下来：正式运行以后再改登记表（比如 min_pf），不能改变这次运行的结论。
+    不是正式运行、或者 plan.json 里没有快照 = None（照旧按现在读到的登记表判）。"""
+    pr = (plan or {}).get("prereg")
+    if not isinstance(pr, dict) or pr.get("formal_run") is not True:
+        return None
+    sts = pr.get("strategies")
+    if not isinstance(sts, dict):
+        return None
+    ents = {n: r["registry_entry"] for n, r in sts.items()
+            if isinstance(r, dict) and r.get("registered") and isinstance(r.get("registry_entry"), dict)}
+    if not ents:
+        return None
+    path = str(pr.get("registry") or PREREG_DEFAULT)
+    if not Path(path).is_absolute():
+        path = str(ROOT_DIR / path)
+    return {"path": path, "sha256": str(pr.get("registry_sha256") or ""),
+            "data": {"round": pr.get("registry_round"), "strategies": ents},
+            "error": "", "explicit": False, "found": True, "snapshot": True}
+
+
+def prereg_for_plan(plan: dict[str, Any] | None, live: dict[str, Any]) -> dict[str, Any]:
+    """正式运行 → 运行时快照（记下现在读到的登记表，抬头里提醒有没有改过）；否则 = live。"""
+    snap = prereg_snapshot(plan)
+    if snap is None:
+        return live
+    snap.update(live_path=live.get("path"), live_sha256=live.get("sha256") or "", live_error=live.get("error") or "",
+                live_found=bool(live.get("found")))
+    return snap
+
+
+def _pos_number(v: Any) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) and f > 0 else None
+
+
+def prereg_rules(prereg: dict[str, Any] | None, strat: str, s: dict[str, Any]) -> dict[str, Any]:
+    """一个策略在登记表里的规则（没登记 = 默认：min_pf 用 settings，没有附加检查）。
+
+    返回 {"registered", "min_pf", "min_pf_source", "min_pf_pending", "min_pf_note", "checks", "exclude_tags",
+          "errors"（登记表写错的地方：这一行判未通过）, "venue", "stage"}。"""
+    default_pf = float(s.get("min_pf", 1.2))
+    out: dict[str, Any] = {
+        "registered": False, "min_pf": default_pf, "min_pf_source": "默认", "min_pf_pending": False,
+        "min_pf_note": "", "checks": [], "exclude_tags": [], "errors": [], "venue": "", "stage": "",
+    }
+    entry = ((prereg or {}).get("data") or {}).get("strategies", {}).get(strat)
+    if entry is None:
+        return out
+    out["registered"] = True
+    if not isinstance(entry, dict):
+        out["errors"].append("登记表里这个策略的内容不是 {...}")
+        return out
+    # venue 可以写一个交易所，也可以写列表（和 scripts/check_prereg.py 一样，两个阶段在不同交易所跑的策略）
+    raw_v = entry.get("venues", entry.get("venue"))
+    out["venue"] = "、".join(str(v) for v in raw_v if v) if isinstance(raw_v, list) else str(raw_v or "")
+    out["stage"] = str(entry.get("stage") or "")
+    mp = entry.get("min_pf")
+    pending: Any = entry.get("min_pf_pending_decision")
+    if isinstance(mp, dict):
+        val = mp.get("value")
+        pending = pending or mp.get("pending_decision")
+        out["min_pf_note"] = str(mp.get("note") or "")
+    else:
+        val = mp
+    pd_any = entry.get("pending_decision")
+    if pd_any is True or (isinstance(pd_any, (list, tuple)) and "min_pf" in pd_any):
+        pending = pending or True
+    elif isinstance(pd_any, dict) and "min_pf" in pd_any:
+        pending = pending or (pd_any.get("min_pf") or True)
+    if isinstance(pending, str) and pending and not out["min_pf_note"]:
+        out["min_pf_note"] = pending
+    out["min_pf_pending"] = bool(pending)
+    if val is not None:
+        f = _pos_number(val)
+        if f is None:
+            out["errors"].append(f"登记表里 min_pf 不是正数（{val!r}）")
+        else:
+            out["min_pf"], out["min_pf_source"] = f, "登记表"
+    checks = entry.get("extra_checks") or []
+    if not isinstance(checks, list):
+        out["errors"].append("登记表里 extra_checks 不是列表")
+        checks = []
+    for c in checks:
+        t = c.get("type") if isinstance(c, dict) else None
+        if t not in CHECK_TYPES:
+            out["errors"].append(f"登记表里有这个脚本不认识的检查 {t if t else c!r}（没法判定）")
+            continue
+        n: dict[str, Any] = {"type": t}
+        if t == "zero_funding_share_invalid":
+            v = _pos_number(c.get("max_share"))
+            if v is None or v > 1:
+                out["errors"].append(f"{t} 的 max_share 要是 0 ~ 1 之间的数（{c.get('max_share')!r}）")
+                continue
+            n["max_share"] = v
+        elif t in ("max_trades_per_pair_year", "min_tradable_pairs"):
+            v = _pos_number(c.get("value"))
+            if v is None:
+                out["errors"].append(f"{t} 的 value 要是正数（{c.get('value')!r}）")
+                continue
+            n["value"] = v
+        elif t == "drop_top_days":
+            k = c.get("n")
+            segs = c.get("segments")
+            if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+                out["errors"].append(f"{t} 的 n 要是正整数（{k!r}）")
+                continue
+            if not isinstance(segs, list) or not segs or any(x not in SEG_ALIAS for x in segs):
+                out["errors"].append(f"{t} 的 segments 要是 {sorted(SEG_ALIAS)} 里的名字（{segs!r}）")
+                continue
+            n["n"] = k
+            n["segments"] = list(dict.fromkeys(SEG_ALIAS[x] for x in segs))
+        elif t == "count_tags_exclude":
+            tags = c.get("tags")
+            if not isinstance(tags, list) or not tags or not all(isinstance(x, str) and x for x in tags):
+                out["errors"].append(f"{t} 的 tags 要是非空的字符串列表（{tags!r}）")
+                continue
+            n["tags"] = list(tags)
+            out["exclude_tags"] = list(dict.fromkeys(out["exclude_tags"] + list(tags)))
+        out["checks"].append(n)
+    return out
+
+
+def _check_text(c: dict[str, Any]) -> str:
+    t = c["type"]
+    if t == "funding_net_positive":
+        return "全期资金费合计必须是净收入"
+    if t == "zero_funding_share_invalid":
+        return f"{c['max_share']:.0%} 以上的交易资金费为 0 = 无效（资金费没记进去，先修数据）"
+    if t == "max_trades_per_pair_year":
+        return f"平均每个币每年交易超过 {c['value']:g} 笔 = 失败"
+    if t == "min_tradable_pairs":
+        return f"能交易的币少于 {c['value']:g} 个 = 测不了"
+    if t == "drop_top_days":
+        return f"去掉盈利最多的 {c['n']} 个入场日后，{'、'.join(SEG_CN5[x] for x in c['segments'])}不能亏"
+    if t == "count_tags_exclude":
+        return f"交易数（30 笔门槛、每币每年交易数）不数 enter_tag 为 {'、'.join(c['tags'])} 的交易"
+    return t
+
+
+def _trades_of(r: dict[str, Any] | None) -> list[dict[str, Any]]:
+    return list(((r or {}).get("_st") or {}).get("trades") or [])
+
+
+def counted_trades(trades: list[dict[str, Any]], exclude: list[str] | tuple[str, ...]) -> int:
+    """交易数口径：不数 enter_tag 在 exclude 里的交易（NewListingShortHedged 的 hedge 对冲腿）。"""
+    ex = set(exclude or ())
+    return sum(1 for t in trades if str(t.get("enter_tag") or "") not in ex)
+
+
+def funding_stats(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    """funding_fees 合计（freqtrade：正数 = 收到、负数 = 付出）和资金费为 0 的交易数（None 也算 0）。"""
+    total = 0.0
+    zero = 0
+    for t in trades:
+        v = cd._num(t.get("funding_fees"))
+        if v is None or v == 0.0:
+            zero += 1
+        else:
+            total += v
+    return {"total": total, "zero": zero, "n": len(trades), "zero_share": (zero / len(trades)) if trades else None}
+
+
+def _log_records(text: str) -> list[str]:
+    """一条日志（以时间开头的那行 + 后面的续行）拼成一个字符串（freqtrade 会把长行折开，见 min_stake_counts）。"""
+    records: list[list[str]] = []
+    for line in text.splitlines():
+        if _LOG_RECORD_START.match(line) or not records:
+            records.append([line])
+        else:
+            records[-1].append(line)
+    return ["".join(r) for r in records]
+
+
+def pair_capability(plan: dict[str, Any], jobs: list[dict[str, str]], strat: str) -> dict[str, Any]:
+    """"能交易的币"：数据检查后保留的币（plan.json 的 pairs），再去掉策略在日志里标记为"没有数据 / 数据条件从没满足"的币
+    （PremiumFade 的 [现货数据:没有] / [现货数据:覆盖] 标记；没有这种标记的策略 = 全部保留的币）。各段日志取并集。"""
+    pairs = list(plan.get("pairs") or [])
+    usable: dict[str, int] = {}
+    missing: set[str] = set()
+    tagged = False
+    for j in jobs:
+        if j["strategy"] != strat or j["variant"] != "default" or j["status"] != "ok" or not j.get("log"):
+            continue
+        try:
+            text = Path(j["log"]).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if SPOT_MISSING_TAG not in text and SPOT_COVERAGE_TAG not in text:
+            continue
+        for rec in _log_records(text):
+            has_cov, has_miss = SPOT_COVERAGE_TAG in rec, SPOT_MISSING_TAG in rec
+            if not (has_cov or has_miss):
+                continue
+            head = rec.split(" - ", 3)[-1]
+            m = _MIN_STAKE_PAIR_RE.search(head)
+            if not m:
+                continue
+            pair = m.group(1)
+            tagged = True
+            if has_cov:
+                hits = _COVERAGE_USABLE_RE.findall(rec)
+                usable[pair] = max(usable.get(pair, 0), int(hits[-1]) if hits else 0)
+            else:
+                missing.add(pair)
+    if tagged:
+        tradable = [p for p in pairs if usable.get(p, 0) > 0]
+        how = "日志里数据条件满足过的币（现货数据）"
+    else:
+        tradable = pairs
+        how = "数据检查后保留的币"
+    return {"tradable": tradable, "n": len(tradable), "pairs": len(pairs), "how": how, "tagged": tagged,
+            "not_tradable": [p for p in pairs if p not in tradable]}
+
+
+def _seg_window(plan: dict[str, Any], seg: str) -> tuple[date, date] | None:
+    if seg in ("train", "test"):
+        w = plan.get(seg)
+    elif seg == "holdout":
+        w = plan.get("holdout")
+    else:
+        w = None
+    if not w:
+        return None
+    return date.fromisoformat(str(w[0])[:10]), date.fromisoformat(str(w[1])[:10])
+
+
+def pair_years(plan: dict[str, Any], strat: str, seg: str, pairs: list[str], spot: bool = False) -> float | None:
+    """这些币在这一段里"能交易"的时间合计（年）：每个币从 max(这一段开始, 第一根K线 + 这一段的预热) 到这一段结束
+    （和 prepare 里"每个币从哪天开始能交易"同一个算法）。
+    spot = True（PremiumFade 这种要现货数据才能交易的策略，数据检查里有现货覆盖时）：开始再和"现货第一根 + 预热"取晚的，
+    结束和"现货最后一根"取早的（现货晚开始 / 早结束的币分母不虚高；中间零星缺几根不扣）。"""
+    win = _seg_window(plan, seg)
+    if win is None:
+        return None
+    info = (plan.get("strategies") or {}).get(strat) or {}
+    tf_sec = cd._tf_seconds(str(info.get("timeframe") or ""))
+    wc = (info.get("warmup_candles") or {}).get(seg, info.get("startup") or 0)
+    warm = math.ceil(int(wc) * tf_sec / 86400) if tf_sec > 0 else 0
+    firsts = plan.get("pairs_first") or {}
+    spot_cov = ((plan.get("spot_coverage") or {}).get("pairs") or {}) if spot else {}
+    total = 0
+    for p in pairs:
+        f = firsts.get(p)
+        p0, p1 = win[0], win[1]
+        if f:
+            p0 = max(p0, date.fromisoformat(str(f)[:10]) + timedelta(days=warm))
+        sc = spot_cov.get(p) or {}
+        if sc.get("spot_first"):
+            p0 = max(p0, date.fromisoformat(str(sc["spot_first"])[:10]) + timedelta(days=warm))
+        if sc.get("spot_last"):
+            p1 = min(p1, date.fromisoformat(str(sc["spot_last"])[:10]))
+        total += max(0, (p1 - p0).days + 1)
+    return total / 365.25
+
+
+def drop_top_days(trades: list[tuple[float, float]], start: float, n: int) -> dict[str, Any]:
+    """事件集中度：按入场日期（UTC）分组，去掉盈利最多的 n 天（只去盈利为正的天）的全部交易，重算这一段的收益。
+
+    trades = [(开仓时间秒, 盈亏 USDT)]。近似：其余交易的盈亏不变（没有按去掉以后的资金重新缩放仓位）。"""
+    by_day: dict[str, list[float]] = {}
+    for ts, p in trades:
+        d = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+        by_day.setdefault(d, []).append(p)
+    sums = {d: sum(v) for d, v in by_day.items()}
+    top = sorted((d for d, v in sums.items() if v > 0), key=lambda d: (-sums[d], d))[:n]
+    rest = [p for ts, p in trades if datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() not in top]
+    total = sum(p for _ts, p in trades)
+    dropped = sum(sums[d] for d in top)
+    return {
+        "n": n, "days": [{"day": d, "profit": sums[d], "trades": len(by_day[d])} for d in top],
+        "trades": len(trades), "trades_after": len(rest),
+        "profit_before": total / start if start > 0 else 0.0,
+        "profit_after": (total - dropped) / start if start > 0 else 0.0,
+        "pf_after": _profit_factor(rest),
+        "share": dropped / total if total > 0 else None,
+    }
+
+
+def _segment_trades(r: dict[str, Any] | None) -> tuple[list[tuple[float, float]], float]:
+    out = []
+    for t in _trades_of(r):
+        try:
+            out.append((cd._parse_ts(t["open_date"]), float(t.get("profit_abs") or 0.0)))
+        except (KeyError, ValueError):
+            continue
+    return out, float((r or {}).get("starting_balance") or DEFAULT_START_BALANCE)
+
+
+def _wf_trades(folds: list[dict[str, Any] | None]) -> tuple[list[tuple[float, float]], float]:
+    infos, start, _missing = research_portfolio.stitched_infos(folds)
+    return [(i["open"], i["profit"]) for i in infos], start
+
+
+def calendar_years(plan: dict[str, Any], row: dict[str, Any]) -> dict[str, Any] | None:
+    """逐年表（只报告）：训练段 + 样本外两次回测按时间顺序复利拼成一条资金曲线（样本外的交易按"训练段结束时的权益 /
+    样本外回测的初始资金"缩放，和走步拼接同一口径），每个日历年：
+      收益 = 年底权益 / 年初权益 - 1（权益含浮亏，取那个时间点之前最后一根已收盘K线的收盘权益）；
+      回撤 = 这一年里账户权益从最高点到最低点的跌幅，峰值从年初权益起算（和 check_drawdown.py 同一个公式：
+             逐根K线、含浮亏，再和只看已平仓余额的回撤取大的；scripts/nfi_yearly_report.py 每年单独回测也是这样判）。
+    训练段最后还开着的仓位在训练段结束时被平掉（freqtrade 回测的做法），所以跨训练段 / 样本外那一年不是一次连续回测。"""
+    import numpy as np
+
+    parts = [r for r in (row.get("train"), row.get("test")) if r is not None]
+    if not parts:
+        return None
+    start = float(parts[0].get("starting_balance") or DEFAULT_START_BALANCE)
+    equity = start
+    infos: list[dict[str, Any]] = []
+    for r in parts:
+        sb = float(r.get("starting_balance") or start)
+        fb = float(r.get("final_balance") or sb)
+        factor = equity / sb if sb > 0 else 1.0
+        for t in _trades_of(r):
+            i = cd._trade_info(t)
+            if i is None:
+                continue
+            i["amount"] *= factor
+            i["profit"] *= factor
+            infos.append(i)
+        equity *= fb / sb if sb > 0 else 1.0
+    tf = str(parts[0].get("timeframe_detail") or parts[0].get("timeframe") or "")
+    cfg = parts[0].get("_cfg") or {}
+    curve = None
+    if infos:
+        curve = cd.equity_curve_candles(
+            infos, start, tf, Path(plan["datadir"]),
+            str(cfg.get("dataformat_ohlcv") or plan.get("dataformat") or "feather"),
+            str(cfg.get("trading_mode") or plan.get("trading_mode") or "futures"),
+        )
+        if curve is None:
+            curve = research_portfolio.closed_curve(infos, start)
+    else:
+        curve = research_portfolio.flat_curve(start)
+    # 区间按 plan.json 的切分（训练段开始 ~ 样本外结束）；只有一段有结果时只算那一段
+    d0 = date.fromisoformat(str(plan["train" if row.get("train") is not None else "test"][0])[:10])
+    d1 = date.fromisoformat(str(plan["test" if row.get("test") is not None else "train"][1])[:10])
+    G, g, end, low = curve["grid"], curve["g"], curve["end"], curve["low"]
+    closes = sorted(curve.get("closes") or [], key=lambda x: x[0])
+    years = []
+    for y in range(d0.year, d1.year + 1):
+        a = max(date(y, 1, 1), d0)
+        b = min(date(y + 1, 1, 1), d1 + timedelta(days=1))
+        ta = research_portfolio._day_ts(a)
+        tb = research_portfolio._day_ts(b)
+        ea, eb = (float(x) for x in research_portfolio.value_at(G, g, end, curve["start"], [ta, tb]))
+        m = (G >= ta) & (G < tb) if len(G) else np.zeros(0, dtype=bool)
+        dd_mtm = cd.curve_max_dd({"low": low[m], "end": end[m], "start": ea}) if len(G) else 0.0
+        bal0 = curve["start"] + sum(p for t, p in closes if t <= ta)
+        yc = [(t, p) for t, p in closes if ta < t <= tb]
+        dd_closed = research_portfolio.closed_dd(yc, bal0)
+        years.append({
+            "year": y, "start": _iso(a), "end": _iso(b - timedelta(days=1)),
+            "full": a == date(y, 1, 1) and b == date(y + 1, 1, 1),
+            "return": eb / ea - 1 if ea > 0 else None, "equity_start": ea, "equity_end": eb,
+            "dd_mtm": dd_mtm, "dd_closed": dd_closed, "dd_worst": max(dd_mtm, dd_closed), "trades_closed": len(yc),
+        })
+    return {"method": curve["method"], "start": start, "years": years}
+
+
+def pre_holdout_job(jobs: list[dict[str, str]], strat: str) -> dict[str, str] | None:
+    for seg in PRE_HOLDOUT_SEGMENTS:
+        j = _job(jobs, strat, "default", seg)
+        if j is not None:
+            return j
+    return None
+
+
+def round5_stats(plan: dict[str, Any], jobs: list[dict[str, str]], row: dict[str, Any],
+                 rules: dict[str, Any]) -> dict[str, Any]:
+    """一行的第 5 轮附加统计（资金费、每币每年交易数、能交易的币、事件集中度、逐年表、2020 留出段）。"""
+    strat, variant = row["strategy"], row["variant"]
+    ex = rules["exclude_tags"]
+    segs = {"train": row.get("train"), "holdout": row.get("holdout"), "test": row.get("test")}
+    out: dict[str, Any] = {"funding": {}, "tpy": {}, "event": {}}
+    # 资金费：每一段的 funding_fees 合计（USDT，每段回测都从 1000 USDT 开始）和资金费为 0 的交易占比
+    for seg, r in segs.items():
+        if r is not None:
+            out["funding"][seg] = funding_stats(_trades_of(r))
+    if row.get("folds"):
+        fl = [t for f in row["folds"] if f is not None for t in _trades_of(f)]
+        if any(f is not None for f in row["folds"]):
+            out["funding"]["wf"] = funding_stats(fl)
+    if segs["train"] is not None and segs["test"] is not None:
+        out["funding"]["all"] = funding_stats(_trades_of(segs["train"]) + _trades_of(segs["test"]))
+    # 能交易的币 / 有交易的币 / 每币每年交易数（交易数按 count_tags_exclude 的口径）
+    cap = pair_capability(plan, jobs, strat)
+    traded: set[str] = set()
+    ex_set = set(ex)
+    for r in (segs["train"], segs["test"]):
+        traded.update(str(t.get("pair")) for t in _trades_of(r) if str(t.get("enter_tag") or "") not in ex_set)
+    cap["traded"] = len(traded)
+    out["pairs"] = cap
+    tot_n, tot_py = 0, 0.0
+    for seg in ("train", "holdout", "test"):
+        r = segs[seg]
+        py = pair_years(plan, strat, seg, cap["tradable"], spot=bool(cap.get("tagged"))) if r is not None else None
+        n = counted_trades(_trades_of(r), ex) if r is not None else None
+        out["tpy"][seg] = {"trades": n, "pair_years": py, "value": (n / py) if (n is not None and py) else None}
+        if seg in ("train", "test") and n is not None and py is not None:
+            tot_n += n
+            tot_py += py
+    if segs["train"] is not None and segs["test"] is not None:
+        out["tpy"]["all"] = {"trades": tot_n, "pair_years": tot_py, "value": tot_n / tot_py if tot_py > 0 else None}
+    # 事件集中度
+    want: dict[str, int] = {}
+    for c in rules["checks"]:
+        if c["type"] == "drop_top_days":
+            for s_ in c["segments"]:
+                want[s_] = max(want.get(s_, 0), int(c["n"]))
+    for s_ in EVENT_SEGMENTS_DEFAULT:
+        want.setdefault(s_, EVENT_TOP_DAYS_DEFAULT)
+    for s_, n in want.items():
+        if s_ == "wf":
+            if row.get("folds") and any(f is not None for f in row["folds"]):
+                tl, st = _wf_trades(row["folds"])
+                out["event"][s_] = drop_top_days(tl, st, n)
+        elif segs.get(s_) is not None:
+            tl, st = _segment_trades(segs[s_])
+            out["event"][s_] = drop_top_days(tl, st, n)
+    # 逐年表、2020 留出段：只看默认参数
+    if variant == "default":
+        try:  # 只报告的表：算不出来不影响判定，表里写"出错"
+            out["years"] = calendar_years(plan, row)
+        except Exception as exc:  # noqa: BLE001
+            out["years"] = {"error": f"{exc.__class__.__name__}: {exc}", "years": [], "method": ""}
+        j = pre_holdout_job(jobs, strat)
+        if j is not None:
+            ph = evaluate_dir(plan, strat, j["dir"]) if j["status"] == "ok" else None
+            if ph is not None:
+                ph["trades_counted"] = counted_trades(_trades_of(ph), ex)
+            out["pre_holdout"] = {"status": j["status"], "timerange": j.get("timerange", ""), "result": ph}
+    return out
+
+
+def settings_for(s: dict[str, Any], rules: dict[str, Any]) -> dict[str, Any]:
+    """这个策略用的研究参数：登记表里有自己的门槛（min_pf）就换成它；没登记 = settings 原样（结果和以前逐字相同）。"""
+    return s if rules["min_pf_source"] == "默认" else {**s, "min_pf": rules["min_pf"]}
+
+
+def set_counted(row: dict[str, Any], rules: dict[str, Any]) -> None:
+    """judge() 之前：交易数口径（count_tags_exclude，例如不数 hedge 对冲腿）。只在登记了要排除的标签时设
+    trades_counted，没登记的行一个字段都不加（判定和以前逐字相同）。"""
+    row["rules"] = rules
+    ex = rules["exclude_tags"]
+    if not ex:
+        return
+    for seg in ("train", "test", "holdout"):
+        if row.get(seg) is not None:
+            row[seg]["trades_counted"] = counted_trades(_trades_of(row[seg]), ex)
+    if row.get("wf") is not None:
+        row["wf"]["trades_counted"] = sum(counted_trades(_trades_of(f), ex) for f in row.get("folds") or [] if f)
+
+
+def finish_round5(plan: dict[str, Any], jobs: list[dict[str, str]], row: dict[str, Any], rules: dict[str, Any],
+                  s: dict[str, Any]) -> None:
+    """judge() 之后：算附加统计（row["r5"]），再按登记表的附加检查和 2020 留出段定结论。"""
+    row["r5"] = round5_stats(plan, jobs, row, rules)
+    apply_round5(row, rules, s, plan)
+
+
+def apply_round5(row: dict[str, Any], rules: dict[str, Any], s: dict[str, Any], plan: dict[str, Any]) -> None:
+    """judge() 之后：登记表的附加检查 + 2020 留出段的判定，最后定这一行的结论。
+
+    无效（INVALID）> 测不了（UNTESTABLE）> 未通过 / 通过；出错（ERROR，一个结果都没有）不变。"""
+    r5 = row["r5"]
+    reasons: list[str] = row["reasons"]
+    invalid: list[str] = []
+    untestable: list[str] = []
+    checks_out: list[dict[str, Any]] = []
+    max_dd = cd.settings_max_dd_pct(s) / 100
+    min_trades = int(s.get("min_trades", 30))
+    for e in rules["errors"]:
+        reasons.append(f"登记表写错：{e}")
+    for c in rules["checks"]:
+        t = c["type"]
+        res = {"type": t, "text": _check_text(c), "result": "PASS", "detail": ""}
+        if t == "funding_net_positive":
+            fa = r5["funding"].get("all")
+            if fa is None:
+                res.update(result="FAIL", detail="训练段或样本外没有结果，算不出全期资金费合计")
+            else:
+                ftr, fte = r5["funding"]["train"]["total"], r5["funding"]["test"]["total"]
+                res["detail"] = f"全期资金费合计 {fa['total']:+.2f} USDT（训练段 {ftr:+.2f} + 样本外 {fte:+.2f}）"
+                if not fa["total"] > 0:
+                    res["result"] = "FAIL"
+            if res["result"] == "FAIL":
+                reasons.append(f"机制检查：{res['detail']}，不是净收入：赚的不是资金费套息")
+        elif t == "zero_funding_share_invalid":
+            fa = r5["funding"].get("all")
+            if fa is None or not fa["n"]:
+                res.update(result="-", detail="没有交易，算不出占比")
+            else:
+                res["detail"] = f"全期 {fa['n']} 笔交易里 {fa['zero']} 笔资金费为 0（{fa['zero_share']:.1%}）"
+                if fa["zero_share"] >= c["max_share"]:
+                    res["result"] = "INVALID"
+                    invalid.append(f"{res['detail']}，达到 {c['max_share']:.0%}：资金费多半没有记进去，先修数据（这一行不算通过也不算失败）")
+        elif t == "max_trades_per_pair_year":
+            ta = r5["tpy"].get("all")
+            if ta is None or ta["value"] is None:
+                res.update(result="FAIL", detail="训练段或样本外没有结果，算不出平均每个币每年的交易数")
+                reasons.append(f"交易频率检查：{res['detail']}")
+            else:
+                res["detail"] = (f"全期平均每个币每年 {ta['value']:.2f} 笔（{ta['trades']} 笔 ÷ {ta['pair_years']:.1f} 个\"币·年\"，"
+                                 f"{r5['pairs']['n']} 个能交易的币）")
+                if ta["value"] > c["value"]:
+                    res["result"] = "FAIL"
+                    reasons.append(f"交易频率检查：{res['detail']}，超过 {c['value']:g} 笔：信号并不\"极端\"，按失败记录")
+        elif t == "min_tradable_pairs":
+            pc = r5["pairs"]
+            res["detail"] = f"能交易的币 {pc['n']} 个（{pc['how']}；保留的币 {pc['pairs']} 个，有交易的 {pc['traded']} 个）"
+            if pc["n"] < c["value"]:
+                res["result"] = "UNTESTABLE"
+                untestable.append(f"{res['detail']}，少于 {c['value']:g} 个：测不了，不算通过")
+        elif t == "drop_top_days":
+            bad, parts = [], []
+            for seg in c["segments"]:
+                if seg == "holdout" and row.get("variant") != "default":
+                    continue
+                ev = r5["event"].get(seg)
+                if ev is None:
+                    bad.append(f"{SEG_CN5[seg]}没有结果")
+                    continue
+                days = "、".join(f"{d['day']}（{d['profit']:+.1f}）" for d in ev["days"]) or "没有盈利的日子"
+                parts.append(f"{SEG_CN5[seg]} {_pct(ev['profit_before'], True)} → {_pct(ev['profit_after'], True)}（去掉 {days}）")
+                if not ev["profit_after"] > 0:
+                    bad.append(f"{SEG_CN5[seg]}去掉盈利最多的 {c['n']} 个入场日后收益 {_pct(ev['profit_after'], True)}")
+            res["detail"] = "；".join(parts)
+            if bad:
+                res["result"] = "FAIL"
+                for b in bad:
+                    reasons.append(f"集中度检查：{b}")
+        elif t == "count_tags_exclude":
+            res.update(result="-", detail=f"交易数只数 enter_tag 不是 {'、'.join(c['tags'])} 的交易")
+        checks_out.append(res)
+    # 2020 留出段（预注册第 3.3 节）：交易 ≥ 30 笔时必须赚钱、回撤 ≤ 上限，否则失败；不足 30 笔只报告
+    ph = r5.get("pre_holdout")
+    if ph is not None and row.get("variant") == "default":
+        r = ph.get("result")
+        if r is None:
+            ph["verdict"] = "ERROR"
+            reasons.append("2020 留出段回测失败或没有结果")
+        else:
+            n = int(r.get("trades_counted", r["trades"]))
+            if n < min_trades:
+                ph["verdict"] = "REPORT"
+            elif r["profit_total"] > 0 and r["dd_worst"] <= max_dd:
+                ph["verdict"] = "PASS"
+            else:
+                ph["verdict"] = "FAIL"
+                if r["profit_total"] <= 0:
+                    reasons.append(f"2020 留出段（{r['start']}~{r['end']}，{n} 笔）亏损 {_pct(r['profit_total'], True)}")
+                if r["dd_worst"] > max_dd:
+                    reasons.append(f"2020 留出段回撤 {_pct(r['dd_worst'])} 超过 {max_dd * 100:g}%")
+    row["checks"] = checks_out
+    row["invalid_reasons"] = invalid
+    row["untestable_reasons"] = untestable
+    if row["verdict"] == "ERROR":
+        return
+    if invalid:
+        row["verdict"] = "INVALID"
+    elif untestable:
+        row["verdict"] = "UNTESTABLE"
+    else:
+        row["verdict"] = "FAIL" if reasons else "PASS"
+
+
+# ----------------------------------------------------------------------------
 # 判定
 # ----------------------------------------------------------------------------
-def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enabled: bool = False) -> None:
+def _counted(r: dict[str, Any]) -> int:
+    """交易数门槛用的笔数（第 5 轮 count_tags_exclude：不数对冲腿；没登记 = 全部交易，和以前一样）。"""
+    return int(r.get("trades_counted", r["trades"]))
+
+
+def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enabled: bool = False,
+          all_segments: bool = False, exclude_tags: list[str] | None = None) -> None:
+    """s = 研究参数（plan.json 的 settings；第 5 轮登记的策略 min_pf 换成登记表里的值）。
+
+    all_segments（第 5 轮登记的策略）：预注册第 3.3 节"训练段、没看过的一段、样本外、走步拼接，每一段都要同时满足：
+    赚钱、回撤 ≤ 上限、PF ≥ 门槛、至少 30 笔"——训练段和没看过的一段也查盈亏因子和交易数（以前只查样本外和走步）。
+    exclude_tags：交易数门槛不数的 enter_tag（只影响原因里的说明文字；笔数用各段的 trades_counted）。"""
     max_dd = cd.settings_max_dd_pct(s) / 100
     max_lev = float(s.get("max_leverage", 5.0))
     min_pf = float(s.get("min_pf", 1.2))
@@ -1080,6 +1743,7 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enab
     ratio = float(s.get("pf_ratio", 0.6))
     tr, te, wf = row["train"], row["test"], row["wf"]
     reasons: list[str] = []
+    cnt_note = f"只数 enter_tag 不是 {'、'.join(exclude_tags)} 的；" if exclude_tags else ""
     if te is None:
         reasons.append("样本外回测失败或没有结果")
     else:
@@ -1092,8 +1756,8 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enab
         pf = te["profit_factor"]
         if te["trades"] > 0 and (pf is None or pf < min_pf):
             reasons.append(f"样本外盈亏因子 {_num(pf)} < {min_pf:g}")
-        if 0 < te["trades"] < min_trades:
-            reasons.append(f"样本外只有 {te['trades']} 笔交易（< {min_trades}）")
+        if te["trades"] > 0 and _counted(te) < min_trades:
+            reasons.append(f"样本外只有 {_counted(te)} 笔交易（{cnt_note}< {min_trades}）")
         if te.get("leverage_max") is not None and te["leverage_max"] > max_lev + 1e-9:
             reasons.append(f"杠杆 {te['leverage_max']:g}x 超过 {max_lev:g}x")
     # 没看过的一段（第 3 轮唯一没被以前的研究看过的数据）：只对默认参数那一行判（优化参数是在包含它的训练段上调的）
@@ -1108,6 +1772,11 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enab
                 reasons.append(f"没看过的一段（{ho['start']}~{ho['end']}）亏损 {_pct(ho['profit_total'], True)}")
             if ho["dd_worst"] > max_dd:
                 reasons.append(f"没看过的一段回撤 {_pct(ho['dd_worst'])} 超过 {max_dd * 100:g}%")
+            if all_segments:
+                if ho["profit_factor"] is None or ho["profit_factor"] < min_pf:
+                    reasons.append(f"没看过的一段盈亏因子 {_num(ho['profit_factor'])} < {min_pf:g}")
+                if _counted(ho) < min_trades:
+                    reasons.append(f"没看过的一段只有 {_counted(ho)} 笔交易（{cnt_note}< {min_trades}）")
     if tr is None:
         reasons.append("训练段回测失败或没有结果")
     else:
@@ -1117,6 +1786,11 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enab
             reasons.append(f"训练段本身就亏损 {_pct(tr['profit_total'], True)}（样本外赚钱多半是运气/行情）")
         if tr["dd_worst"] > max_dd:
             reasons.append(f"训练段回撤 {_pct(tr['dd_worst'])} 超过 {max_dd * 100:g}%")
+        if all_segments and tr["trades"] > 0:
+            if tr["profit_factor"] is None or tr["profit_factor"] < min_pf:
+                reasons.append(f"训练段盈亏因子 {_num(tr['profit_factor'])} < {min_pf:g}")
+            if _counted(tr) < min_trades:
+                reasons.append(f"训练段只有 {_counted(tr)} 笔交易（{cnt_note}< {min_trades}）")
         tpf, opf = tr["profit_factor"], (te or {}).get("profit_factor")
         if te is not None and tpf is not None and not math.isinf(tpf) and tpf > 0 and opf is not None \
                 and not math.isinf(opf) and opf < ratio * tpf:
@@ -1131,8 +1805,8 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enab
                 reasons.append(f"走步验证亏损 {_pct(wf['profit_total'], True)}")
             if wf["trades"] > 0 and (wf["profit_factor"] is None or wf["profit_factor"] < min_pf):
                 reasons.append(f"走步盈亏因子 {_num(wf['profit_factor'])} < {min_pf:g}")
-            if wf["trades"] < min_trades:
-                reasons.append(f"走步只有 {wf['trades']} 笔交易（< {min_trades}）")
+            if _counted(wf) < min_trades:
+                reasons.append(f"走步只有 {_counted(wf)} 笔交易（{cnt_note}< {min_trades}）")
             if wf["folds_missing"]:
                 reasons.append(f"走步有 {wf['folds_missing']} 折没有结果")
     row["reasons"] = reasons
@@ -1282,15 +1956,24 @@ def _year_returns(r: dict[str, Any] | None) -> dict[int, float]:
     return dict(sorted(out.items()))
 
 
-def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
+def build_rows(plan: dict[str, Any], jobs, notes, prereg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """prereg = load_prereg() 的结果（第 5 轮登记表）；None = 读默认的 configs/preregistration.json（读不出来按空登记表）。"""
     run_dir = Path(plan["_run_dir"])
     folds = plan["wf"]["folds"]
     s = plan.get("settings", {})
     wf_enabled = bool(folds)
     holdout_enabled = bool(plan.get("holdout"))
+    if prereg is None:
+        prereg = load_prereg()
+        if prereg.get("error"):
+            prereg = {**prereg, "data": {}}
+        prereg = prereg_for_plan(plan, prereg)
     rows = []
     for strat in plan["strategies_order"]:
         info = plan["strategies"][strat]
+        rules = prereg_rules(prereg, strat, s)
+        s_row = settings_for(s, rules)
+        ex_tags = rules["exclude_tags"]
         variants = ["default"]
         if _job(jobs, strat, "opt", "test") or _job(jobs, strat, "opt", "train"):
             variants.append("opt")
@@ -1339,6 +2022,7 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                 }
             row["folds"] = fold_res
             row["wf"] = stitch_folds(plan, fold_res) if wf_enabled else None
+            set_counted(row, rules)
             if variant == "opt" and holdout_enabled:
                 row["notes"].append(
                     "优化参数是在训练段（包含\"没看过的一段\"）上调出来的，没看过的一段对它不是独立检验；那一段只看默认参数那一行"
@@ -1368,13 +2052,22 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                     for k, v in c["skip_pairs"].items():
                         coins[k] = coins.get(k, 0) + v
                 top = "、".join(f"{k} {v}" for k, v in sorted(coins.items(), key=lambda kv: -kv[1])[:6])
-                row["notes"].append(
-                    "最小下单额：排名进了前 K 名、但按风险算的仓位比交易所最小下单额小太多（freqtrade 最多放大 30%）开不出来的次数："
-                    + "；".join(parts) + (f"（按币：{top}）" if top else "")
-                    + "。开不出来的币还占着名额，那个名额空到下一个调仓日，回测结果是\"少开了几笔\"的结果；"
-                    "实盘资金越少越严重（日志里带 " + MIN_STAKE_SKIP_TAG + " 的行）"
-                )
-            judge(row, s, wf_enabled, holdout_enabled)
+                if strat in XS_SLOT_STRATEGIES:
+                    row["notes"].append(
+                        "最小下单额：排名进了前 K 名、但按风险算的仓位比交易所最小下单额小太多（freqtrade 最多放大 30%）开不出来的次数："
+                        + "；".join(parts) + (f"（按币：{top}）" if top else "")
+                        + "。开不出来的币还占着名额，那个名额空到下一个调仓日，回测结果是\"少开了几笔\"的结果；"
+                        "实盘资金越少越严重（日志里带 " + MIN_STAKE_SKIP_TAG + " 的行）"
+                    )
+                else:
+                    # 第 5 轮的事件型策略（PremiumFade、CapitulationRebound、NewListingShortHedged）：没有"前 K 名 / 调仓日"，只是少开了这一笔
+                    row["notes"].append(
+                        "最小下单额：有信号、但按风险算的仓位比交易所最小下单额小太多（freqtrade 最多放大 30%）开不出来的次数："
+                        + "；".join(parts) + (f"（按币：{top}）" if top else "")
+                        + "。这些信号这一次没有开仓，回测结果是\"少开了几笔\"的结果；"
+                        "实盘资金越少越严重（日志里带 " + MIN_STAKE_SKIP_TAG + " 的行）"
+                    )
+            judge(row, s_row, wf_enabled, holdout_enabled, all_segments=rules["registered"], exclude_tags=ex_tags)
             if row["verdict"] == "ERROR":
                 # 一个结果都没有：多半是策略代码报错。第一条原因直接指向日志，"没有可调参数"之类的提醒没有意义
                 failed = [j for j in jobs if j["strategy"] == strat and j["variant"] == variant and j["status"] == "fail"]
@@ -1382,6 +2075,8 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                 if failed:
                     row["reasons"].insert(0, "回测运行出错（多半是策略代码报错）")
                     row["notes"].append(f"报错信息看结果目录里的 logs/{Path(failed[0]['log']).name}")
+            # 第 5 轮：附加统计（只报告）+ 登记表的附加检查 + 2020 留出段（有结果时）
+            finish_round5(plan, jobs, row, rules, s_row)
             tr = row["train"]
             if tr and tr["trades"] == 0 and strat == "FundingContrarian":
                 row["notes"].append("资金费率历史 OKX 只有最近约 3 个月，训练段没有数据，这个策略在那段时间不开仓（策略的设计）")
@@ -1402,6 +2097,7 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                         f"资金费：按每 8 小时 0.01% 估算，没有资金费数据的那段持仓还要付约 {_pct(-fe['adj_pct'])}，"
                         f"样本外收益 {_pct(te['profit_total'], True)} → {_pct(fe['profit_total_est'], True)}"
                     )
+            row["formal_run"] = formal_of(plan, strat)
             rows.append(row)
     # 低风险版 vs 原版：逐笔对比，核对"仓位减半"在这份数据（真实的合约张数 / 最小下单量）上是不是真的成立
     by_default = {r["strategy"]: r for r in rows if r["variant"] == "default"}
@@ -1415,8 +2111,7 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
             if c is not None:
                 low["lowrisk_vs"]["segments"][seg] = c
                 low["notes"].append(_lowrisk_text(seg, c, base_name))
-    vr = {"PASS": 0, "FAIL": 1, "ERROR": 2}
-    rows.sort(key=lambda r: (vr[r["verdict"]], -((r["test"] or {}).get("profit_total") or -9.0)))
+    rows.sort(key=lambda r: (VERDICT_ORDER[r["verdict"]], -((r["test"] or {}).get("profit_total") or -9.0)))
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     return rows
@@ -1484,7 +2179,260 @@ def _holdout_table(plan: dict[str, Any], rows: list[dict[str, Any]]) -> list[str
     return L
 
 
-def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
+def _text_table(headers: list[tuple[str, bool]], body: list[list[str]], indent: str = "") -> list[str]:
+    widths = [max(cd._width(h), *(cd._width(row[i]) for row in body)) if body else cd._width(h)
+              for i, (h, _) in enumerate(headers)]
+    sep = indent + "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    out = [sep, indent + "| " + " | ".join(cd._pad(h, widths[i]) for i, (h, _) in enumerate(headers)) + " |", sep]
+    for row in body:
+        out.append(indent + "| " + " | ".join(cd._pad(c, widths[i], headers[i][1]) for i, c in enumerate(row)) + " |")
+    out.append(sep)
+    return out
+
+
+def _rel(path: str) -> str:
+    try:
+        return str(Path(path).resolve().relative_to(ROOT_DIR))
+    except ValueError:
+        return str(path)
+
+
+def _default_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in rows if r["variant"] == "default"]
+
+
+def _prereg_changed_line(prereg: dict[str, Any], plan: dict[str, Any] | None) -> list[str]:
+    """运行时（scripts/check_prereg.py 写进 plan.json 的 "prereg"）记下的登记表 sha256 和现在读到的不一样 = 提醒。
+    只提醒：报告按现在读到的登记表判。"""
+    pr = (plan or {}).get("prereg")
+    if not isinstance(pr, dict):
+        return []
+    if prereg.get("snapshot"):
+        then = str(prereg.get("sha256") or "").lower()
+        now = str(prereg.get("live_sha256") or "").lower()
+        live = _rel(str(prereg.get("live_path") or ""))
+        if prereg.get("live_error"):
+            return [f"!! 现在的登记表读不出来（{prereg['live_error']}）；这次是正式运行，按 plan.json 里运行时的登记表快照判，不受影响。"]
+        if then == now:
+            return []
+        t = f"{then[:12]}…" if then else "没有登记表"
+        n = f"{now[:12]}…" if now else "没有登记表"
+        return [f"!! 登记表在这次正式运行之后改过：运行时 {t}，现在 {live} 是 {n}。这次是正式运行，"
+                "本报告按 plan.json 里运行时的登记表快照判，现在的登记表不用；正式运行以后的改动要写进登记表的 changes。"]
+    then = str(pr.get("registry_sha256") or "").lower()
+    now = str(prereg.get("sha256") or "").lower()
+    if not then and not now:
+        return []
+    if then == now:
+        return []
+    t = f"{then[:12]}…" if then else "没有登记表"
+    n = f"{now[:12]}…" if now else "没有登记表"
+    return [f"!! 登记表在这次运行之后改过：运行时 {t}，现在 {n}。本报告按现在读到的登记表判；"
+            "预注册要求规则在回测之前定下来，请先确认改动是不是在正式运行之前做的。"]
+
+
+def _formal_lines(plan: dict[str, Any] | None) -> list[str]:
+    """这次是不是正式的预注册运行（scripts/check_prereg.py 写进 plan.json 的 prereg）。plan.json 没有 prereg = 不写。"""
+    pr = (plan or {}).get("prereg")
+    if not isinstance(pr, dict):
+        return []
+    commit = str(((pr.get("git") or {}).get("commit")) or "")
+    ctxt = f"git 提交 {commit[:10]}" if commit else "读不到 git 提交号"
+    note = str(pr.get("formal_note") or "")
+    if pr.get("formal_run") is True:
+        return [f"正式运行：是（{ctxt}；{note}）"]
+    L = []
+    if pr.get("allow_unregistered") or pr.get("problems"):
+        L.append("!! 不是正式的预注册运行"
+                 + ("（用了 RESEARCH_ALLOW_UNREGISTERED=1）" if pr.get("allow_unregistered") else "")
+                 + f"：{note or '登记检查有不一致'}（{ctxt}）。这份报告不能当第 5 轮的正式结论用。")
+        for x in (pr.get("problems") or [])[:8]:
+            L.append(f"   - {x}")
+    else:
+        L.append(f"正式运行：否（{ctxt}）：{note or 'plan.json 里没有记下原因'}")
+        for x in [x for x in (pr.get("not_formal_reasons") or []) if x not in note][:8]:
+            L.append(f"   - {x}")
+    return L
+
+
+def formal_of(plan: dict[str, Any] | None, strat: str) -> str:
+    """CSV 的 formal_run 列：登记的策略 = 是 / 否；plan.json 没有 prereg 或者策略没登记 = 空。"""
+    pr = (plan or {}).get("prereg")
+    if not isinstance(pr, dict):
+        return ""
+    rec = (pr.get("strategies") or {}).get(strat)
+    if not isinstance(rec, dict) or not rec.get("registered"):
+        return ""
+    return "是" if (pr.get("formal_run") is True and rec.get("formal") is True) else "否"
+
+
+def _prereg_header(prereg: dict[str, Any] | None, rows: list[dict[str, Any]], s: dict[str, Any],
+                   plan: dict[str, Any] | None = None) -> list[str]:
+    """报告抬头：第 5 轮登记表（哪个文件、登记了哪些策略、各自的门槛和附加检查、待定的决定）。"""
+    if prereg is None:
+        return []
+    path = _rel(prereg["path"])
+    changed = _prereg_changed_line(prereg, plan)
+    if not prereg.get("found"):
+        return [f"预注册登记表：没有 {path}，全部策略按上面的默认规则判（没有第 5 轮的附加检查）"] + changed
+    seen: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        ru = r.get("rules") or {}
+        if ru.get("registered") and r["strategy"] not in seen:
+            seen[r["strategy"]] = ru
+    sha = (prereg.get("sha256") or "")[:12]
+    if not seen:
+        return [f"预注册登记表：{path}（sha256 {sha}…）里没有这次研究的策略，全部按上面的默认规则判"] + changed
+    min_trades = int(s.get("min_trades", 30))
+    snap = "（运行时快照，plan.json 里记下的）" if prereg.get("snapshot") else ""
+    L = _formal_lines(plan)
+    L += [f"预注册登记表：{path}{snap}（sha256 {sha}…）。登记的策略按登记表判（预注册第 2 节\"算失败的情况\"和第 3.3 节）：",
+         f"  - 每一段（训练段、没看过的一段、样本外、走步拼接）都要 盈亏因子 ≥ 门槛、交易 ≥ {min_trades} 笔"
+         "（第 3.3 节原文；没登记的策略照旧只对样本外和走步查这两条）"]
+    for name, ru in seen.items():
+        where = ""
+        if ru.get("venue"):
+            where = f"（{ru['venue']}" + (f"，第 {ru['stage']} 阶段" if ru.get("stage") else "") + "）"
+        parts = [f"盈亏因子门槛 {ru['min_pf']:g}" + ("（登记表）" if ru["min_pf_source"] == "登记表" else "（默认）")
+                 + ("（!! 待定）" if ru["min_pf_pending"] else "")]
+        parts += [_check_text(c) for c in ru["checks"]]
+        if ru["errors"]:
+            parts.append("!! 登记表写错（这一行判未通过）：" + "；".join(ru["errors"]))
+        L.append(f"  - {name}{where}：" + "；".join(parts))
+    for name, ru in seen.items():
+        if ru["min_pf_pending"]:
+            L.append(
+                f"!! 待定（要在正式运行之前定下来，不能看完结果再改）：{name} 的盈亏因子门槛这次按 {ru['min_pf']:g} 判"
+                + (f"（{ru['min_pf_note']}）" if ru["min_pf_note"] else "（市场中性的策略用 1.1，还是保持 1.2）")
+            )
+    return L + changed
+
+
+def _usdt(v: float | None) -> str:
+    return "-" if v is None else f"{v:+.2f}"
+
+
+def _round5_tables(plan: dict[str, Any], rows: list[dict[str, Any]]) -> list[str]:
+    """第 5 轮新增的几张表：资金费 / 每币每年交易 / 能交易的币；逐年表；2020 留出段；事件集中度（都在排名表后面）。"""
+    s = plan.get("settings", {})
+    max_dd = cd.settings_max_dd_pct(s) / 100
+    min_trades = int(s.get("min_trades", 30))
+    drows = [r for r in _default_rows(rows) if r.get("r5")]
+    if not drows:
+        return []
+    L: list[str] = ["", "第 5 轮附加统计（默认参数；只报告，登记表里有对应检查的策略才参与判定）："]
+    headers = [("策略", False), ("资金费 训练段", True), ("没看过的一段", True), ("样本外", True), ("走步", True),
+               ("全期", True), ("资金费为 0 的交易", True), ("每币每年交易 训练段", True), ("没看过的一段", True),
+               ("样本外", True), ("全期", True), ("能交易的币", True), ("有交易的币", True)]
+    body = []
+    for r in drows:
+        f, t, pc = r["r5"]["funding"], r["r5"]["tpy"], r["r5"]["pairs"]
+
+        def tv(seg: str, t: dict[str, Any] = t) -> str:
+            v = (t.get(seg) or {}).get("value")
+            return "-" if v is None else f"{v:.2f}"
+
+        za = (f.get("all") or {}).get("zero_share")
+        body.append([
+            r["strategy"], _usdt((f.get("train") or {}).get("total")), _usdt((f.get("holdout") or {}).get("total")),
+            _usdt((f.get("test") or {}).get("total")), _usdt((f.get("wf") or {}).get("total")),
+            _usdt((f.get("all") or {}).get("total")), "-" if za is None else f"{za:.1%}",
+            tv("train"), tv("holdout"), tv("test"), tv("all"), f"{pc['n']}/{pc['pairs']}", str(pc["traded"]),
+        ])
+    L.extend(_text_table(headers, body))
+    L.append("  （资金费 = 这一段所有交易的 funding_fees 合计，USDT，正数 = 收到、负数 = 付出；每段回测都从 1000 USDT 开始，"
+             "走步 = 各折直接相加；全期 = 训练段 + 样本外。")
+    if str(plan.get("exchange") or "okx").lower() == "okx":
+        L.append("   OKX 只有最近约 3 个月的资金费率，更早的持仓 funding_fees 是 0，所以 OKX 的\"资金费为 0\"占比一般很高。")
+    L.append("   每币每年交易 = 交易数 ÷ 能交易的币在这一段里能交易的时间合计（年；第一根K线 + 预热之后才算）；"
+             "交易数按登记表的口径（例如不数 hedge 对冲腿）。")
+    L.append("   能交易的币 = 数据检查后保留的币，再去掉策略日志里标记\"没有数据 / 数据条件从没满足\"的币（PremiumFade 的现货数据）；"
+             "有交易的币 = 训练段或样本外至少有一笔交易的币）")
+
+    # ---- 逐年表 ----
+    yrows = [r for r in drows if (r["r5"].get("years") or {}).get("years")]
+    yerr = [f"{r['strategy']}（{r['r5']['years']['error']}）" for r in drows if (r["r5"].get("years") or {}).get("error")]
+    if yerr:
+        L.append("")
+        L.append("!! 逐年表出错（只影响这张表，不影响判定）：" + "；".join(yerr))
+    if yrows:
+        ys = yrows[0]["r5"]["years"]["years"]
+        L.append("")
+        L.append("逐年表（默认参数；训练段 + 样本外按时间顺序复利拼成一条资金曲线；每格 = 这一年的 收益 / 回撤；只报告，判定仍按段）：")
+        headers = [("策略", False)] + [
+            ((f"{y['year']} 年" if y["full"] else f"{y['year']} 年（{y['start'][5:]}~{y['end'][5:]}）"), True) for y in ys
+        ] + [("回撤算法", False)]
+        body = []
+        for r in yrows:
+            cy = r["r5"]["years"]
+            by = {y["year"]: y for y in cy["years"]}
+            cells = []
+            for y in ys:
+                v = by.get(y["year"])
+                cells.append("-" if v is None or v["return"] is None else f"{_pct(v['return'], True)} / {_pct(v['dd_worst'])}")
+            body.append([r["strategy"]] + cells + [cy["method"] or "-"])
+        L.extend(_text_table(headers, body))
+        L.append("  （收益 = 年底权益 ÷ 年初权益 - 1（权益含浮亏）；回撤 = 这一年里账户权益从最高点到最低点的跌幅，峰值从年初权益起算，"
+                 "逐根K线、含浮亏，和只看平仓的取大的——和 check_drawdown.py 同一口径（scripts/nfi_yearly_report.py 也是这样判）。")
+        L.append(f"   样本外的交易按训练段结束时的权益缩放后接上；训练段结束时还开着的仓位被回测平掉，所以 {plan['test'][0][:4]} 年"
+                 "不是一次连续回测。回撤超过上限的年份只是提醒，不改变结论）")
+
+    # ---- 2020 留出段 ----
+    phrows = [r for r in drows if r["r5"].get("pre_holdout") is not None]
+    ph_plan = plan.get("pre_holdout")
+    if phrows or ph_plan:
+        win = f"{ph_plan[0]} ~ {ph_plan[1]}" if isinstance(ph_plan, (list, tuple)) and len(ph_plan) == 2 else "2020 年"
+        L.append("")
+        L.append(f"2020 留出段（{win}；从来没用过，主运行之后每个策略只跑一次，更早的数据只用来预热；回撤口径和 check_drawdown.py 相同）：")
+        headers = [("策略", False), ("区间", False), ("交易", True), ("收益", True), ("盈亏因子", True), ("回撤", True), ("结论", False)]
+        body = []
+        for r in drows:
+            ph = r["r5"].get("pre_holdout")
+            if ph is None:
+                body.append([r["strategy"], "-", "-", "-", "-", "-", "没有跑"])
+                continue
+            x = ph.get("result")
+            if x is None:
+                body.append([r["strategy"], ph.get("timerange") or "-", "-", "-", "-", "-", "回测失败或没有结果"])
+                continue
+            n = int(x.get("trades_counted", x["trades"]))
+            verdict = {"PASS": "赚钱、回撤达标", "FAIL": "未通过（亏损或回撤超标）",
+                       "REPORT": f"不足 {min_trades} 笔：只报告"}.get(ph.get("verdict"), "-")
+            body.append([r["strategy"], f"{x['start']}~{x['end']}", str(n) + ("" if n == x["trades"] else f"（共 {x['trades']}）"),
+                         _pct(x["profit_total"], True), _num(x["profit_factor"]), _pct(x["dd_worst"]), verdict])
+        L.extend(_text_table(headers, body))
+        L.append(f"  （交易 ≥ {min_trades} 笔时必须赚钱、回撤 ≤ {max_dd * 100:g}%，否则算失败；不足 {min_trades} 笔只报告，"
+                 "不算通过也不算失败）")
+
+    # ---- 事件集中度 ----
+    ev_body = []
+    for r in drows:
+        reg = {}
+        for c in (r.get("rules") or {}).get("checks") or []:
+            if c["type"] == "drop_top_days":
+                for sg in c["segments"]:
+                    reg[sg] = c["n"]
+        for seg, ev in r["r5"]["event"].items():
+            days = " ".join(f"{d['day']}({d['profit']:+.1f})" for d in ev["days"]) or "没有盈利的日子"
+            verdict = "只报告"
+            if seg in reg:
+                verdict = "通过" if ev["profit_after"] > 0 else "未通过"
+            ev_body.append([r["strategy"], SEG_CN5.get(seg, seg), _pct(ev["profit_before"], True), str(ev["trades"]),
+                            days, "-" if ev["share"] is None else f"{ev['share']:.0%}",
+                            _pct(ev["profit_after"], True), _num(ev["pf_after"]), verdict])
+    if ev_body:
+        L.append("")
+        L.append(f"事件集中度（默认参数；按入场日期（UTC）分组，去掉盈利最多的几天的全部交易后重算这一段的收益；"
+                 f"没登记的策略按 {EVENT_TOP_DAYS_DEFAULT} 天只报告）：")
+        headers = [("策略", False), ("区间", False), ("收益", True), ("交易", True), ("盈利最多的几天（入场日 盈亏 USDT）", False),
+                   ("占这一段盈利", True), ("去掉后收益", True), ("去掉后PF", True), ("结论", False)]
+        L.extend(_text_table(headers, ev_body))
+        L.append("  （近似：其余交易的盈亏不变，没有按去掉以后的资金重新算仓位；只去盈利为正的日子。"
+                 "登记了 drop_top_days 的策略：去掉以后不赚钱 = 未通过）")
+    return L
+
+
+def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str, prereg: dict[str, Any] | None = None) -> str:
     s = plan.get("settings", {})
     max_dd = cd.settings_max_dd_pct(s)
     L: list[str] = []
@@ -1554,10 +2502,16 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     firsts = [v for v in funding_first_dates(plan).values() if v is not None] if plan.get("trading_mode") == "futures" else []
     if plan.get("trading_mode") == "futures":
         ff = datetime.fromtimestamp(min(firsts), tz=timezone.utc).date().isoformat() if firsts else None
-        L.append(
-            f"资金费：OKX 只能下载最近约 3 个月的资金费率（这次数据里最早的一条在 {ff or '（没有资金费数据）'}），"
-            "在那之前持仓的资金费按 0 算，拿得久的趋势策略会显得偏好；"
-        )
+        if str(plan.get("exchange") or "okx").lower() == "okx":
+            L.append(
+                f"资金费：OKX 只能下载最近约 3 个月的资金费率（这次数据里最早的一条在 {ff or '（没有资金费数据）'}），"
+                "在那之前持仓的资金费按 0 算，拿得久的趋势策略会显得偏好；"
+            )
+        else:  # 币安等：资金费历史从下载开始日期起都有（第 5 轮 XSFundingCarry）
+            L.append(
+                f"资金费：{plan.get('exchange')} 的资金费率数据里最早的一条在 {ff or '（没有资金费数据）'}，"
+                "在那之前持仓的资金费按 0 算（之后的按真实费率算进收益）；"
+            )
         L.append(
             "      \"样本外扣资金费\"列按每 8 小时 0.01%（做多付、做空收）估算了这一部分，只用来提醒、不参与\"通过\"判定。"
             "趋势策略样本外只是小赚的，不能算已经证明能赚钱"
@@ -1578,6 +2532,7 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
         f"样本外盈亏因子不低于训练段的 {float(s.get('pf_ratio', 0.6)):g} 倍"
         + (f"；没看过的一段也要赚钱、回撤 ≤ {max_dd:g}%（只看默认参数）" if ho_ else "")
     )
+    L.extend(_prereg_header(prereg, rows, s, plan))
     L.append("")
 
     headers = [
@@ -1590,7 +2545,8 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     for r in rows:
         tr, te, w = r["train"] or {}, r["test"] or {}, r["wf"] or {}
         fe = r.get("funding") or {}
-        verdict = {"PASS": "通过", "FAIL": "未通过", "ERROR": "出错"}[r["verdict"]]
+        verdict = VERDICT_CN[r["verdict"]]
+        main_reasons = (r.get("invalid_reasons") or []) + (r.get("untestable_reasons") or []) + r["reasons"]
         body.append([
             str(r["rank"]), verdict, r["strategy"], r["timeframe"], VARIANT_CN[r["variant"]],
             _pct(tr.get("profit_total"), True), _num(tr.get("profit_factor")), _pct(tr.get("dd_worst")),
@@ -1598,7 +2554,7 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
             _num(te.get("profit_factor")), _pct(te.get("dd_worst")),
             str(te["trades"]) if te else "-",
             _pct(w.get("profit_total"), True) if w else "-", _pct(w.get("dd_worst")) if w else "-",
-            r["reasons"][0] if r["reasons"] else "全部达标",
+            main_reasons[0] if main_reasons else "全部达标",
         ])
     widths = [
         max(cd._width(h), *(cd._width(row[i]) for row in body)) if body else cd._width(h)
@@ -1614,6 +2570,7 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
 
     if ho_:
         L.extend(_holdout_table(plan, rows))
+    L.extend(_round5_tables(plan, rows))
 
     L.append("")
     L.append("说明（每一行的细节）：")
@@ -1656,6 +2613,16 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
                     f"{k} " + "/".join(str(p.get(k, '-')) if p else "默认" for p in r["fold_params"]) for k in keys
                 )
                 L.append(f"    走步各折参数（越稳定越好，跳来跳去说明是在拟合噪音）：{spread}")
+        ru = r.get("rules") or {}
+        if ru.get("registered"):
+            L.append(f"    盈亏因子门槛：{ru['min_pf']:g}（{ru['min_pf_source']}）" + ("  !! 待定，正式运行前要定下来" if ru["min_pf_pending"] else ""))
+        for c in r.get("checks") or []:
+            res = {"PASS": "通过", "FAIL": "未通过", "INVALID": "无效", "UNTESTABLE": "测不了", "-": "（不判）"}.get(c["result"], c["result"])
+            L.append(f"    附加检查（登记表）：{c['text']} → {res}" + (f"：{c['detail']}" if c["detail"] else ""))
+        for x in r.get("invalid_reasons") or []:
+            L.append(f"    无效：{x}")
+        for x in r.get("untestable_reasons") or []:
+            L.append(f"    测不了：{x}")
         for x in r["reasons"]:
             L.append(f"    未通过：{x}")
         for x in dict.fromkeys(r["notes"]):
@@ -1694,6 +2661,10 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     passed = sum(1 for r in rows if r["verdict"] == "PASS")
     L.append("")
     L.append(f"合计：{len(rows)} 行（{len(plan['strategies_order'])} 个策略），通过 {passed} 行。")
+    n_inv = sum(1 for r in rows if r["verdict"] == "INVALID")
+    n_unt = sum(1 for r in rows if r["verdict"] == "UNTESTABLE")
+    if n_inv or n_unt:
+        L.append(f"      另有 无效 {n_inv} 行（资金费没记进去，先修数据）、测不了 {n_unt} 行（能交易的币不够）：都不算通过。")
     if dropped:
         L.append(f"!! 还有要求研究、但没有跑的策略：{dropped}")
     L.append("注：")
@@ -1722,6 +2693,14 @@ CSV_FIELDS = [
     "holdout_start", "holdout_end", "holdout_trades", "holdout_profit", "holdout_pf", "holdout_dd",
     "wf_trades", "wf_profit", "wf_pf", "wf_dd", "wf_fold_returns",
     "params", "reasons", "notes",
+    # 第 5 轮（加在最后，前面的列不变）
+    "min_pf_used", "min_pf_source", "min_pf_pending", "trades_counted_test",
+    "funding_train", "funding_holdout", "funding_test", "funding_wf", "funding_all", "funding_zero_share_all",
+    "tpy_train", "tpy_holdout", "tpy_test", "tpy_all", "pairs_tradable", "pairs_traded",
+    "pre_holdout_start", "pre_holdout_end", "pre_holdout_trades", "pre_holdout_profit", "pre_holdout_pf",
+    "pre_holdout_dd", "pre_holdout_verdict",
+    "event_holdout_after", "event_test_after", "years", "extra_checks", "invalid_reasons", "untestable_reasons",
+    "formal_run",
 ]
 
 
@@ -1749,6 +2728,44 @@ def _csv_row(r: dict[str, Any]) -> dict[str, Any]:
         "wf_fold_returns": " ".join("" if x is None else f"{x:.4f}" for x in w.get("fold_returns") or []),
         "params": json.dumps(r["params"], ensure_ascii=False) if r["params"] else "",
         "reasons": "；".join(r["reasons"]), "notes": "；".join(dict.fromkeys(r["notes"])),
+        **_csv_round5(r),
+    }
+
+
+def _csv_round5(r: dict[str, Any]) -> dict[str, Any]:
+    r5 = r.get("r5") or {}
+    ru = r.get("rules") or {}
+    fu, tp, ev = r5.get("funding") or {}, r5.get("tpy") or {}, r5.get("event") or {}
+    ph = r5.get("pre_holdout") or {}
+    phr = ph.get("result") or {}
+    te = r.get("test") or {}
+    years = (r5.get("years") or {}).get("years") or []
+
+    def g(d: dict[str, Any], seg: str, key: str) -> Any:
+        return (d.get(seg) or {}).get(key)
+
+    return {
+        "min_pf_used": ru.get("min_pf"), "min_pf_source": ru.get("min_pf_source"),
+        "min_pf_pending": ru.get("min_pf_pending"),
+        "trades_counted_test": te.get("trades_counted", te.get("trades")),
+        "funding_train": g(fu, "train", "total"), "funding_holdout": g(fu, "holdout", "total"),
+        "funding_test": g(fu, "test", "total"), "funding_wf": g(fu, "wf", "total"), "funding_all": g(fu, "all", "total"),
+        "funding_zero_share_all": g(fu, "all", "zero_share"),
+        "tpy_train": g(tp, "train", "value"), "tpy_holdout": g(tp, "holdout", "value"), "tpy_test": g(tp, "test", "value"),
+        "tpy_all": g(tp, "all", "value"),
+        "pairs_tradable": (r5.get("pairs") or {}).get("n"), "pairs_traded": (r5.get("pairs") or {}).get("traded"),
+        "pre_holdout_start": phr.get("start"), "pre_holdout_end": phr.get("end"),
+        "pre_holdout_trades": phr.get("trades_counted", phr.get("trades")), "pre_holdout_profit": phr.get("profit_total"),
+        "pre_holdout_pf": "inf" if isinstance(phr.get("profit_factor"), float) and math.isinf(phr["profit_factor"])
+        else phr.get("profit_factor"),
+        "pre_holdout_dd": phr.get("dd_worst"), "pre_holdout_verdict": ph.get("verdict"),
+        "event_holdout_after": g(ev, "holdout", "profit_after"), "event_test_after": g(ev, "test", "profit_after"),
+        "years": json.dumps({str(y["year"]): [y["return"], y["dd_worst"]] for y in years}) if years else "",
+        "extra_checks": json.dumps([{k: c[k] for k in ("type", "result")} for c in r.get("checks") or []],
+                                   ensure_ascii=False) if r.get("checks") else "",
+        "invalid_reasons": "；".join(r.get("invalid_reasons") or []),
+        "untestable_reasons": "；".join(r.get("untestable_reasons") or []),
+        "formal_run": r.get("formal_run", ""),
     }
 
 
@@ -1771,8 +2788,15 @@ def cmd_report(a: argparse.Namespace) -> int:
     if not any(j["status"] == "ok" for j in jobs):
         print("没有任何成功的回测结果，无法生成报告（看 logs/ 目录里的日志）。")
         return 3
-    rows = build_rows(plan, jobs, load_notes(run_dir))
-    text = render(plan, rows, a.stage)
+    prereg = load_prereg(a.prereg or None)
+    if prereg["error"] and prereg_snapshot(plan) is None:
+        print(f"错误：{prereg['error']}。登记表坏了，第 5 轮策略的门槛和附加检查会悄悄不做，所以不生成报告；"
+              f"修好以后重新生成（不用重跑回测）：.venv/bin/python scripts/research_report.py report --run-dir {run_dir}",
+              file=sys.stderr)
+        return 2
+    prereg = prereg_for_plan(plan, prereg)
+    rows = build_rows(plan, jobs, load_notes(run_dir), prereg)
+    text = render(plan, rows, a.stage, prereg)
     print(text)
     (run_dir / "summary.txt").write_text(text + "\n", encoding="utf-8")
     with (run_dir / "summary.csv").open("w", newline="", encoding="utf-8-sig") as fh:  # utf-8-sig：Excel 认中文
@@ -1780,7 +2804,17 @@ def cmd_report(a: argparse.Namespace) -> int:
         w.writeheader()
         for r in rows:
             w.writerow(_csv_row(r))
-    _write_json(run_dir / "summary.json", {"stage": a.stage, "plan": _strip(plan), "rows": _strip(rows)})
+    _write_json(run_dir / "summary.json", {
+        "stage": a.stage, "plan": _strip(plan), "rows": _strip(rows),
+        "preregistration": {
+            **{k: prereg[k] for k in ("path", "sha256", "found")},
+            "snapshot": bool(prereg.get("snapshot")), "live_sha256": prereg.get("live_sha256"),
+            **{k: ((plan.get("prereg") or {}).get(k)) for k in ("formal_run", "formal_note", "not_formal_reasons",
+                                                                 "problems", "allow_unregistered")},
+            "commit": (((plan.get("prereg") or {}).get("git")) or {}).get("commit"),
+            "formal_by_strategy": {r["strategy"]: r.get("formal_run", "") for r in _default_rows(rows)},
+        },
+    })
     print()
     print(f"报告已保存：{run_dir / 'summary.txt'}（表格）  {run_dir / 'summary.csv'}（Excel 可打开）")
     return 0
@@ -2002,6 +3036,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--stage", choices=["final", "interim", "interrupted"], default="final")
     sp.add_argument("--max-dd", type=cd.max_dd_arg, default=None,
                     help="按这个回撤上限（%%）重新判定（默认 = plan.json 里记的值；不重跑回测、不改 plan.json）")
+    sp.add_argument("--prereg", default="",
+                    help="第 5 轮预注册登记表（默认 configs/preregistration.json；没有这个文件 = 全部按默认规则判）")
 
     a = p.parse_args(argv)
     return {

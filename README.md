@@ -10,6 +10,7 @@
 > 第 3 轮真实结果（13 个策略 0 个通过）：[`docs/research-runs/2026-11-07-round3/`](docs/research-runs/2026-11-07-round3/README.md)；
 > 第 4 轮（冻结版 NFI 低杠杆逐年回测 + 币安模拟盘）：[`docs/nfi-yearly.md`](docs/nfi-yearly.md)、[`docs/forward-test.md`](docs/forward-test.md)、
 > [`docs/forward-monitoring.md`](docs/forward-monitoring.md)，见下面「第 4 步：NFI 按年回测和模拟盘」。
+> 第 5 轮（4 个和趋势无关的新机制，规格冻结、每个只测一次）：[`docs/round5-preregistration.md`](docs/round5-preregistration.md)，见下面「第 5 步：新策略类型（预注册，只测一次）」。
 
 ---
 
@@ -58,7 +59,10 @@ binance-quant/
 │   ├── config.notify-zh.json      ← 中文 Telegram 通知模板
 │   ├── config.synthetic-test.json ← 【入口】合成数据流程自检专用（结果没有意义）
 │   ├── config.okx-research.json   ← 【入口】第 2 步策略研究（make research 用）
-│   ├── research-overrides/        ← 研究时个别策略自己的设置（例如 XSMomentum.json：max_open_trades 6；NFI 的三个版本各一个，内容相同）
+│   ├── config.okx-research-listings.json ← 【入口】第 5 轮：OKX 全部 USDT 永续的研究配置（NewListingShortHedged 用，BTC 在最后当对冲腿）
+│   ├── config.binance-research.json ← 【入口】第 5 轮：币安 U 本位研究配置（XSFundingCarry；只能在币安服务地区的服务器上用）
+│   ├── preregistration.json       ← 第 5 轮预注册登记表（策略文件 sha256、门槛、附加检查、改动记录；make prereg-check）
+│   ├── research-overrides/        ← 研究时个别策略自己的设置（例如 XSMomentum.json：max_open_trades 6；NFI 的三个版本各一个，内容相同；第 5 轮 3 个）
 │   ├── pairs.okx-usdt-perp.json   ← OKX 回测用的交易对列表
 │   ├── pairs.okx-research.json    ← 第 2 步研究用的约 60 个交易对
 │   ├── pairs.binance-usdt-perp.json ← 币安用的交易对列表（20 个，与 pairs.okx-usdt-perp.json 同一批币）
@@ -69,7 +73,10 @@ binance-quant/
 │   ├── check_drawdown.py          ← 账户回撤（上限默认 15%）/ 5x 杠杆检查，输出中文表格；回撤上限在这里定义
 │   ├── research.sh                ← 第 2 步策略研究（训练段/样本外/走步验证 + 调参，make research）
 │   ├── research_report.py         ← research.sh 的辅助脚本（数据检查、区间切分、中文排名表）
-│   ├── research_portfolio.py      ← 子账户组合检查（每个策略一个子账户，看合起来的账户权益）
+│   ├── research_portfolio.py      ← 子账户组合检查（每个策略一个子账户，看合起来的账户权益；--run-dirs 合并几次运行）
+│   ├── check_prereg.py            ← 第 5 轮预注册检查：策略文件 sha256 和登记表一致才研究，记进 plan.json（make prereg-check / prereg-write）
+│   ├── build_listings.py          ← 第 5 轮：扫描本地 1d 数据生成新币上线日文件（NewListingShortHedged 用；make listings）
+│   ├── round5_week_check.sh       ← 第 5 轮管道检查：一周小窗口，只打印交易笔数和资金费是否非零（make pipeline-week）
 │   ├── fetch_benchmarks.sh        ← 下载固定版本的第三方基准策略并核对 sha256（只在 VPS 上用）
 │   ├── research_benchmarks.sh     ← 基准策略研究（make research-benchmarks）
 │   ├── research_nfi_yearly.sh     ← 第 4 轮：NFI X8 低杠杆版本逐年回测（下载、每年单独回测、出结论；make research-nfi-yearly）
@@ -77,7 +84,9 @@ binance-quant/
 │   ├── run_dryrun.sh              ← 第 4 轮：启动币安模拟盘 / 看门狗（先做全部检查，不通过就不启动）
 │   ├── forward_report.py          ← 模拟盘前向报告（只读数据库，含浮亏回撤、胜率、盈亏比，对照成功标准）
 │   ├── equity_watchdog.py         ← 账户权益看门狗（含浮亏回撤超过 15% 就停止开新仓、发中文告警）
-│   ├── check_portfolio_math.py    ← 组合检查的算法自检（手工编的资金曲线 vs 手算答案）
+│   ├── check_portfolio_math.py    ← 组合检查的算法自检（手工编的资金曲线 vs 手算答案；make guard-test）
+│   ├── check_report_round5.py     ← 第 5 轮报告自检（登记表规则、资金费、每币每年交易数、能交易的币、事件集中度、逐年表、2020 留出段；make guard-test）
+│   ├── check_round5_guards.py     ← 第 5 轮复查加的保护的自检（资金费 7 天窗口、下架币、正式运行规则；make guard-test）
 │   ├── check_drawdown_math.py     ← 含浮亏回撤的算法自检（加仓 / 分批平仓按逐笔订单重建持仓；make guard-test）
 │   ├── check_forward_tools.py     ← 前向报告 + 看门狗自检（合成数据库 + 本机假接口；make forward-check、make guard-test）
 │   ├── check_live_guards.py       ← 实盘保护逻辑自检，含模拟盘配置检查（make guard-test）
@@ -107,12 +116,14 @@ binance-quant/
 │   ├── nfi-yearly.md              ← 第 4 轮：NFI 的杠杆怎么定的、三个版本、逐年回测怎么跑、怎么看结果
 │   ├── forward-test.md            ← 第 4 轮：币安模拟盘前向测试（证明什么、在哪跑、怎么启动、什么时候停、怎么判断成功）
 │   ├── forward-monitoring.md      ← 第 4 轮：前向报告 + 账户权益看门狗
+│   ├── round5-preregistration.md  ← 第 5 轮：冻结的预注册规格（4 个新策略）、实现与规格的差异、登记表怎么用
 │   ├── systemd/easytrade-dryrun@.service ← systemd 模板（模拟盘机器人 + 看门狗两个实例）
 │   ├── research-runs/             ← VPS 上真实研究的原始报告存档（第 2 轮 summary、第 3 轮全部报告和摘要）
 │   └── okx-volume-units.md        ← OKX K线成交量单位说明
 └── user_data/
     ├── strategies/                ← 策略代码（benchmarks/ = 基准策略的封顶杠杆子类；vendor/ = 下载的第三方基准策略，不提交）
-    ├── data/                      ← 下载的行情数据（不提交）；okx-synthetic/ 是合成测试数据
+    ├── data/                      ← 下载的行情数据（不提交）；okx-synthetic/、binance-synthetic/ 是合成测试数据
+    ├── listings/                  ← 第 5 轮：新币上线日文件（scripts/build_listings.py 生成，不提交；研究结果目录里有副本）
     ├── backtest_results/          ← 回测结果（不提交）
     ├── dryrun/                    ← 模拟盘的数据库、日志、看门狗状态、冻结的策略代码副本（不提交）
     └── logs/                      ← 日志（不提交）
@@ -569,6 +580,208 @@ freqtrade 自己的 MaxDrawdown 保护只看已平仓的交易；项目硬规则
 
 ---
 
+## 第 5 步：新策略类型（预注册，只测一次）
+
+前 4 轮已经全部失败，失败的策略又大多是"跟着行情走"的趋势类。第 5 轮做 **4 个和趋势无关的新机制**，规格、参数、通过/失败条件都在**任何回测之前冻结**，
+在 2021-01 ~ 2026-11 的完整历史上**每个只测一次**。冻结的规格原文、实现时的差异、登记表的用法：[`docs/round5-preregistration.md`](docs/round5-preregistration.md)。
+
+| 策略（文件在 `user_data/strategies/`） | 机制 | 周期 / 方向 | 在哪测 | 研究配置 + 自己的研究设置 | 第 2 节里自己的"算失败" |
+|---|---|---|---|---|---|
+| `XSFundingCarry` | 资金费套息：做空资金费最高的三分之一、做多最低的三分之一，每周一调仓，多空中性 | 1d，多空 | **币安**（只能在币安服务地区的那台服务器上） | `config.binance-research.json` + `research-overrides/XSFundingCarry.json`（max_open_trades 20） | 全期资金费合计不是净收入；95% 以上交易资金费为 0 = 无效 |
+| `PremiumFade` | 永续相对现货的溢价极端（z ≥ 3 / ≤ -3）时反向做，等溢价回到正常 | 1h，多空 | OKX（美国 VPS），要现货K线 | `config.okx-research.json` | 平均每币每年 > 30 笔；能交易的币 < 20 个 = 测不了 |
+| `CapitulationRebound` | 全市场去杠杆暴跌日（≥ 3 倍 σ20、放量、BTC 同跌）之后第二天买入，最长 5 天 | 1d，只做多 | 第一阶段 OKX（美国 VPS）；第二阶段币安 | `config.okx-research.json` + `research-overrides/CapitulationRebound.json`（max_open_trades 6） | 去掉盈利最多的 3 天后，没看过的一段或样本外亏损 |
+| `NewListingShortHedged` | 新币上线第 15 天开盘做空、持有到第 120 天，等额 BTC 多单对冲 | 1d，空新币 + BTC 多单 | 第一阶段 OKX 全部 USDT 永续（美国 VPS）；第二阶段币安 | `config.okx-research-listings.json` + `research-overrides/NewListingShortHedged.json`（max_open_trades 40） | 30 笔门槛只数新币空单（不数 enter_tag = hedge 的对冲腿） |
+
+通过标准（3.3 节）：训练段、没看过的一段、样本外、走步拼接**每一段**都要赚钱、含浮亏回撤 ≤ 15%、盈亏因子 ≥ 门槛（默认 1.2）、≥ 30 笔；
+样本外 PF 不低于训练段的 0.6 倍、杠杆 ≤ 5 倍（4 个策略都是 2 倍或 1 倍）；再加上表里每个策略自己的条件。手续费 + 滑点按每边 0.07%。
+
+### 1. 预注册：先登记、提交 git，再跑（任何真实数据的回测之前）
+
+机器可读的登记表是 `configs/preregistration.json`：每个策略文件的 sha256、一起固定的文件（混入类 `easytrade_risk.py`、`rust_port_common.py`、
+各自的 research-override）的 sha256、交易所、参数、盈亏因子门槛和附加检查。
+
+```bash
+make prereg-check                     # 看登记表：4 个策略都应该显示"一致"（不联网，几秒钟）
+make prereg-write ARGS="--force"      # （只在正式运行之前）改过策略文件 / 混入类 / research-override 以后重新计算 sha256
+```
+
+- `make research` 在下载数据之前先核对（`scripts/check_prereg.py`，第"0/5"步）：登记过的策略，文件和登记的不一致就**停止，退出码 4，一次回测都不跑**。
+  没登记的策略（第 1 ~ 4 轮的）照常研究。
+- **策略文件、`easytrade_risk.py`、`rust_port_common.py`、research-override 改了一个字，都要重新 `make prereg-write ARGS="--force"`**，再和登记表一起提交 git。
+- 正式运行之后的任何改动都算新策略：换新类名（例如 `XSFundingCarry2`），在登记表的 `changes` 里写明日期、改了什么、为什么（见文档第 6.4 节）。旧结果原样保留。
+- 每个策略文件的 sha256、git 提交号、研究配置的 sha256 都写进结果目录 `plan.json` 的 `prereg`。下面这些文件有一个没提交、或者工作区有改动，就记为"不是正式的预注册运行"：
+  登记的策略文件、一起固定的文件（`pinned_files`）、登记表、这次用的研究配置（连同它 `add_config_files` 引入的币池文件 `pairs.*.json`）、
+  规格文档 `docs/round5-preregistration.md`、研究和判定的脚本（`Makefile`、`scripts/research.sh`、`scripts/_common.sh`、`scripts/research_report.py`、
+  `scripts/check_drawdown.py`、`scripts/check_prereg.py`、`scripts/build_listings.py`、`scripts/download_okx_data.sh`）。读不到 git（没装、不是 git 仓库）也不算正式运行。
+- 还要和登记的一样，否则**停止（退出码 4）**：交易所和阶段（登记表 `venue` / `stages`）、研究配置（`config` / `stages."N".config`）、
+  运行设置（登记表 `run_settings`：手续费 0.0007、回撤上限 15、最少 30 笔、PF 比例 0.6、起始日期、切分、走步、预热、是否保留下架币、2020 留出段等），
+  research-override 也不能多出没登记的。第二阶段的配置还没写进登记表之前，第二阶段的运行会被拒绝。
+- 每个类、每个阶段只正式运行一次：正式运行会记进本机的 `user_data/research/formal_runs.jsonl`（屏幕上会提示），**把这几行复制进登记表的 `formal_runs`、提交 git**；
+  之后同一个类、同一个阶段再跑只算"重复运行"（不是正式运行），`make prereg-write ARGS="--force"` 也会拒绝改这个类的登记。
+- 只是想试跑（结果不算数）：`RESEARCH_ALLOW_UNREGISTERED=1 make research ARGS="..."`（会大声提醒，`plan.json` 里 `formal_run = false`，报告开头写"!! 不是正式的预注册运行"）。
+
+**正式运行之前你要定的事**（详见文档第 7 节）：
+
+1. **XSFundingCarry 的盈亏因子门槛**：登记表里现在写的是 **1.1（待定）**，推荐给市场中性账户用 1.1；规格默认是不改规则（1.2）。
+   定下来以后把 `min_pf` 改成 1.1 或 1.2、**删掉 `min_pf_pending_decision` 那一行**，提交 git。还标着"待定"时，运行 C 会被预注册检查拒绝。
+2. 3.3 节"每一段都要 PF ≥ 门槛、≥ 30 笔"现在按原文对训练段和没看过的一段也查（只对登记过的策略）。要沿用旧规则得在正式运行之前说。
+
+提交顺序：
+
+```bash
+make prereg-check                     # 4 个"一致"
+git status --short                    # 只应该有代码、配置、文档（数据、结果、上线日文件、数据库都在 .gitignore 里）
+git add Makefile README.md .gitignore docs configs scripts user_data/strategies
+git commit -m "Round 5 pre-registration"      # 记下 commit；之后在干净的工作区上做正式运行（git status 什么都没有）
+git push origin feat/round5-new-strategies    # 第 5 轮在这个分支上（基于 feat/round4-nfi-forward）；两台服务器都从这里拉
+```
+
+两台服务器（美国 VPS 跑运行 A / B，币安服务地区的那台跑运行 C）上，**第一件事**都是切到这个分支、拉到最新、核对登记表：
+
+```bash
+git fetch && git checkout feat/round5-new-strategies && git pull
+make prereg-check                     # 4 个"一致"；git status --short 应该什么都没有（手工复制过来的文件没提交 = 不是正式运行）
+```
+
+### 2. 管道检查（只看数据和笔数，不看收益；3.2 节）
+
+**先只做数据检查，不回测**（`--data-check-only`：下载、数据检查、上线日文件 / 资金费覆盖的汇总，然后停下，一次回测都不跑，`plan.json` 里记为不是正式运行）。
+命令和下面运行 A / B / C 一样，只是加上 `--data-check-only`（运行 A 先按第 3 节下好合约和现货K线）：
+
+```bash
+# 美国 VPS
+make research ARGS="--strategies 'PremiumFade CapitulationRebound' --no-download --data-check-only"                      # 运行 A 的数据
+RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 RESEARCH_KEEP_DELISTED=1 \
+  make research ARGS="--config configs/config.okx-research-listings.json --strategies NewListingShortHedged --data-check-only"  # 运行 B 的数据（下载全部永续、生成上线日文件）
+# 币安服务地区的服务器
+make research ARGS="--config configs/config.binance-research.json --strategies XSFundingCarry --data-check-only"
+```
+
+看 `data_check.txt` 和屏幕上的汇总，**在看到任何收益之前**按规格定下来：
+
+- NewListingShortHedged：上线日文件里每年有多少个新币；明显凑不够每段 30 笔空单时，直接记为"测不了"，不进入正式运行。
+- XSFundingCarry：每个币的资金费条数、起止日期、结算间隔、资金费 / 标记价格能对上的比例；资金费缺得多 = 先修数据（否则会判"无效"），修好之前不进入正式运行。
+- PremiumFade：现货和永续时间戳能对上的比例；有现货数据的币少于 20 个 = "测不了"。
+
+然后每个策略跑一周小窗口（2026-11-01 ~ 11-07），只打印交易笔数和 funding_fees 是否非零（不打印收益）：
+
+```bash
+# 合成数据走一遍（不联网，数字没有意义）：见下面「用合成数据自检」里的第 5 轮命令；make synthetic-test 也会对 4 个策略跑未来函数 / 预热检查
+make pipeline-week ARGS="--strategy PremiumFade"
+make pipeline-week ARGS="--strategy CapitulationRebound"
+# NewListingShortHedged 要先有全部永续的数据和上线日文件（上面运行 B 的数据检查会生成；也可以手工：先用
+#   bash scripts/download_okx_data.sh --config configs/config.okx-research-listings.json --timerange <下载开始日期>- --timeframes "1h 4h 1d"
+#   再 make listings ARGS="--datadir user_data/data/okx --data-start <下载开始日期 YYYYMMDD>"）；没有上线日文件时这一步报错退出，不会当成"没有信号"
+make pipeline-week ARGS="--strategy NewListingShortHedged --config configs/config.okx-research-listings.json"
+make pipeline-week ARGS="--strategy XSFundingCarry --config configs/config.binance-research.json"     # 只在币安服务地区的服务器上
+```
+
+正式运行时，研究的数据检查（`data_check.txt`）也会照样报告上面这些数字。
+
+### 3. 运行 A（美国 VPS，OKX）：PremiumFade + CapitulationRebound（第一阶段）
+
+```bash
+tmux new -s round5
+# 1) 研究币池的合约K线，从 2019-11 起（含 2020 留出段和预热；已经有的只补缺的那段）
+bash scripts/download_okx_data.sh --config configs/config.okx-research.json --timerange 20191101- --timeframes "1h 4h 1d"
+# 2) 现货 BASE/USDT 1h（PremiumFade 用；存在 user_data/data/okx/ 根目录，合约在 futures/ 下）
+make download-spot
+# 3) 研究（不再下载；主运行之后自动跑一次 2020 留出段）
+make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--strategies 'PremiumFade CapitulationRebound' --no-download"
+```
+
+- 没有现货数据的币 PremiumFade 一笔都不开（日志里 `[现货数据:没有]`），能交易的币少于 20 个时记为"测不了"。
+- CapitulationRebound 第一阶段不通过 = 失败；通过了才跑第二阶段（见运行 C）。
+
+### 4. 运行 B（美国 VPS，OKX 全部 USDT 永续）：NewListingShortHedged（第一阶段）
+
+```bash
+RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 RESEARCH_KEEP_DELISTED=1 \
+  make research ARGS="--config configs/config.okx-research-listings.json --strategies NewListingShortHedged"
+```
+
+- 第 1 步自动下载 OKX 全部 USDT 永续（自带 `--include-inactive-pairs`；OKX 是否还给已下架合约的数据没有核实，`data_check.txt` 和上线日文件的汇总会列出实际拿回了哪些"数据停止更新"的币）。
+- 回测前自动生成上线日文件 `user_data/listings/okx_first_candle.json`（`scripts/build_listings.py`，只读本地数据），副本和 sha256 记在结果目录。
+  数据起点 = 这次下载的开始日期（或 BTC 第一根日K线，取晚的）：第一根K线不晚于数据起点的币算老币，不做空。
+  所以运行 B **不要加 `--no-download`**：不下载时数据起点只能按 BTC 第一根日K线算，以前从更早开始下的 BTC 会让"这次才开始下的老币"被当成新币。
+- 第一阶段没有资金费（OKX 只有最近约 3 个月），新币空头要付的负资金费算不到，所以结果只是**上限**：不通过 = 失败，通过还不算数。
+- 2020 留出段规格只在第二阶段（币安 2020 年上线的币）跑，这里不加 `RESEARCH_PRE_HOLDOUT`。
+- 1000 USDT 时每笔空单约 12 USDT 名义金额，很多合约的最小下单量比这大，会开不出来（报告会数次数）。
+
+### 5. 运行 C（只能在币安服务地区的那台服务器上，币安数据）：XSFundingCarry，以及第二阶段确认
+
+币安会拒绝美国 IP（HTTP 451）。**不要用代理 / VPN 绕过地区限制**，下面的命令只在你那台位于币安服务地区的服务器上运行（那台服务器上还没有这个仓库时，先按 [`docs/forward-test.md`](docs/forward-test.md) 第 6 节装好）。
+
+```bash
+tmux new -s round5c
+# 先在登记表里定好 XSFundingCarry 的 min_pf（见上面第 1 节），提交并 git push，再在这台服务器上：
+git fetch && git checkout feat/round5-new-strategies && git pull
+make prereg-check
+# 研究（第 1 步自动下载币安 1h 4h 1d K线、1h 标记价格和资金费率；资金费从 2019-09 起，2020 留出段可以测）
+make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--config configs/config.binance-research.json --strategies XSFundingCarry"
+```
+
+- 想先单独下数据：`bash scripts/download_okx_data.sh --config configs/config.binance-research.json --timerange 20190901- --timeframes "1h 4h 1d"`
+  （存到 `user_data/data/binance/futures/`；规格写的是 "1h 1d"，研究脚本的数据检查默认要 1h 4h 1d 都在，多下的 4h 不参加计算）。
+- 1000 USDT 时 BTC 这条腿（最小下单额 100 USDT）多数周开不出来，报告会数次数（日志标记 `[最小下单额:开不出来]`）。
+- **第二阶段确认**（CapitulationRebound、NewListingShortHedged，只有第一阶段通过的才跑）：同一台服务器、币安 2021 ~ 2026 的数据，包括已下架的币。
+  先核实 data.binance.vision / 币安接口实际能拿到哪些下架币（LUNA、FTT 等）的数据，再定第二阶段的研究配置和币池，写进登记表对应策略的 `stages."2".config`、提交 git，然后：
+
+  ```bash
+  # CapitulationRebound 第二阶段（<第二阶段配置> = 上面定好、提交过的币安配置；它的 2020 留出段已经在运行 A 里用 OKX 跑过，这里不再跑）
+  RESEARCH_KEEP_DELISTED=1 make research ARGS="--config <第二阶段配置> --strategies CapitulationRebound"
+  # NewListingShortHedged 第二阶段（币安全部 U 本位永续，BTC/USDT:USDT 放在白名单最后；上线日文件自动生成 user_data/listings/binance_first_candle.json）
+  RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 RESEARCH_KEEP_DELISTED=1 \
+    make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--config <第二阶段配置> --strategies NewListingShortHedged"
+  ```
+
+### 6. 2020 留出段（从来没用过，每个策略只跑一次）
+
+- 运行 A、C 里的 `RESEARCH_PRE_HOLDOUT=20200101-20201231` 让研究脚本在主运行之后，每个策略用默认参数单独回测一次 2020 年（2019 年的数据只用来预热，下载时自动多下这一段），
+  回撤口径和 `scripts/check_drawdown.py` 相同。用哪些币：默认是本地数据和 2020 年有重叠的币（2020 年里有数据就算，包括年中才上线的，
+  以实际数据为准；`RESEARCH_PRE_HOLDOUT_PAIRS="BTC ETH ..."` 可以指定）。XSFundingCarry 这样选出来的币少于 15 个时会提醒（它要至少 15 个合格的币才开仓，少于 15 个这一段一笔都不开）。
+- 判法：交易 ≥ 30 笔时必须赚钱、回撤 ≤ 15%，否则算失败；不足 30 笔只报告，不算通过也不算失败。报告里单独一张"2020 留出段"表。
+- 只跑一次：不要为了 2020 年的结果改任何东西，也不要单独重跑留出段。
+
+### 7. 报告里第 5 轮新加的内容
+
+- 报告开头：这次是不是正式的预注册运行（`正式运行：是 / 否` 和原因、git 提交号；用了 `RESEARCH_ALLOW_UNREGISTERED=1` 或者有不一致时大字写"!! 不是正式的预注册运行"）；
+  用的是哪份登记表（sha256）、每个登记策略的门槛和附加检查；还没定的门槛标"!! 待定"；登记表在运行之后改过也会提醒。
+  **正式运行按运行时记在 `plan.json` 里的登记表快照判**：之后再改登记表、重新生成报告，结论不变（抬头会提醒登记表改过）。
+- `summary.csv` 最后一列 `formal_run`：登记的策略 = 是 / 否，没登记的 = 空。
+- 结论有五种：通过、未通过、**无效**（资金费没记进去，先修数据）、**测不了**（能交易的币太少）、出错。
+- 排名表后面的新表（只报告，登记了对应检查的策略才参与判定）：**第 5 轮附加统计**（每段资金费合计、资金费为 0 的交易占比、平均每币每年交易数、能交易的币）、
+  **逐年表**（每个日历年的收益和含浮亏回撤）、**2020 留出段**、**事件集中度**（去掉盈利最多的 3 个入场日后重算没看过的一段和样本外）。
+- `summary.csv` 新增的列加在最后，原来的列和顺序不变。换一份登记表重新判已经跑完的研究（不重跑回测）：
+  `.venv/bin/python scripts/research_report.py report --run-dir user_data/research/run_<时间> --prereg configs/preregistration.json`
+
+### 8. 组合检查（3.4 节：OKX 和币安两次运行合在一起）
+
+只放**通过**的策略（默认挑选只看训练段，可能挑到"无效 / 测不了"的，所以一定用 `--strategies` 写明）。XSFundingCarry 的资金曲线来自币安那次运行，其他来自 OKX：
+
+```bash
+.venv/bin/python scripts/research_portfolio.py --run-dirs user_data/research/run_<OKX 那次> user_data/research/run_<币安那次> \
+    --strategies "PremiumFade,XSFundingCarry" --weights riskparity
+```
+
+- 两个结果目录要在同一台机器上：画资金曲线要用每个目录 `plan.json` 里记的 K 线数据目录（例如 `user_data/data/okx/`、`user_data/data/binance/`）。
+  建议在币安服务地区的那台服务器上做：用 scp / rsync 把 OKX 那次的结果目录和 `user_data/data/okx/` 复制过去（只是复制自己服务器上的文件）。
+- 参考策略的相关系数要有参考策略的结果：运行 A 里没有它们，把第 3 轮的研究目录（里面有 TsmomTrend、DonchianTrend、XSMomentum、BigTrendShort）也加进 `--run-dirs`（放在后面）。
+- 结果写进第一个目录的 `portfolio-merged.txt` / `.csv` / `.json`（`--out-dir` 可以换目录）；来自不同交易所时结论标"**跨交易所近似**"；
+  区间和判定标准按第一个目录，几个目录的区间不一样时会列出来提醒。
+- 同时报告每个候选和 TsmomTrend、DonchianTrend、XSMomentum、BigTrendShort 的训练段日收益相关系数（只报告，不用来挑选；参考策略要在其中一个目录里有结果）。
+- 训练段日收益相关系数 ≥ 0.7 的两个只留一个（留训练段 收益/回撤 比更好的）：`--strategies` 里有登记过的第 5 轮策略时，指定的名单也照样去重，输出里写明去掉了哪个；
+  组合总权益（含浮亏）回撤 ≤ 15%，其他标准和单个策略相同。来源目录不是正式的预注册运行时，输出开头大字提醒。
+- 通过组合检查的策略，下一步是在币安服务地区的服务器上跑模拟盘：每个策略一个子账户、一个机器人，至少 3 个月；机器人配置的 max_open_trades 和 research-override 相同，
+  白名单用研究结果目录的 `pairs.effective.json`；模拟盘要先核实的事见文档第 7 节第 5 条。
+
+### 9. 如果 0 个通过（3.5 节）
+
+不补救：不改参数、不换周期、不放宽规则后重跑同一个策略，失败结果原样记进登记表；只做诊断（亏在哪一段、成本占毛利多少、资金费占多少、亏损是否集中在少数几天），留给下一轮。
+这时把钱留作现金（或者只跑模拟盘），比放进一个没通过检验的策略更安全。
+
+---
+
 ## 用合成数据自检（不联网）
 
 在连不上交易所的机器上（或者改完配置/策略想快速确认"有没有改坏"），可以用**随机生成的合成行情**把整条流程跑一遍：
@@ -577,24 +790,36 @@ freqtrade 自己的 MaxDrawdown 保护只看已平仓的交易；项目硬规则
 make synthetic-test                      # = bash scripts/synthetic_test.sh，约 10 分钟
 make synthetic-test ARGS="--quick"       # 跳过第 4 步的未来函数/预热检查（约 4 分钟）
 make synthetic-test ARGS="--regen"       # 重新生成合成数据
-make guard-test                          # 只跑第 3 步：实盘保护逻辑自检，另外还有含浮亏回撤算法自检、前向报告 + 看门狗自检（十几秒）
+make guard-test                          # 只跑第 3 步：实盘保护逻辑自检，另外还有含浮亏回撤算法自检、前向报告 + 看门狗自检、组合算法自检、第 5 轮报告自检（十几秒）
 make research-nfi-yearly-synthetic       # 第 4 轮 NFI 逐年回测流程自检（合成数据 + 替身策略，不用 NFI，约 10 分钟）
+make synthetic-data-binance              # 另外生成"像币安"的合成数据（synthetic-test 没有时也会自动生成）
+# 第 5 轮的三次运行（合成数据，数字没有意义；运行 A 约 3 分钟、B 约 2 分钟、C 约 10 分钟）：
+make research-synthetic ARGS="--strategies 'PremiumFade CapitulationRebound' --pre-holdout 20200101-20201231"
+RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 RESEARCH_KEEP_DELISTED=1 make research-synthetic ARGS="--config configs/config.okx-research-listings.json --strategies NewListingShortHedged"
+make research-synthetic ARGS="--config configs/config.binance-research.json --strategies XSFundingCarry --pre-holdout 20200101-20201231"
+bash scripts/round5_week_check.sh --synthetic --strategy PremiumFade      # 一周小窗口管道检查（XSFundingCarry 加 --config configs/config.binance-research.json --datadir user_data/data/binance-synthetic）
 ```
 
 它会依次做：
 
 1. `scripts/make_synthetic_data.py` 生成 8 个币（BTC ETH SOL XRP DOGE LINK ADA AVAX）、2020-01-01 至今的合成 K 线
    （1h/4h/1d 全部区间，5m/15m 只有最近 730 天），以及最近约 92 天的标记价格和资金费率（模仿 OKX 只有约 3 个月历史），
-   放在 `user_data/data/okx-synthetic/`（约 65 MB，不提交 git）。其中 3 个币"上线晚"（SOL 2021-06-01、AVAX 2022-09-15、ADA 2024-06-01，
+   放在 `user_data/data/okx-synthetic/`（约 130 MB，不提交 git）。其中 3 个币"上线晚"（SOL 2021-06-01、AVAX 2022-09-15、ADA 2024-06-01，
    那天之前没有数据），用来测试研究脚本对上线晚的币的处理；`make research-synthetic` 也用这份数据（研究从 2021-01-01 开始，
    前面那一年只用来预热，和 VPS 上的真实情况一样）。想要第 2 轮那样的 2 年数据：`make synthetic-data ARGS="--days 730 --listings ''"`。
    行情里有牛市/熊市/震荡/急跌/急涨切换、波动聚集、日内时段效应和不定期的"巨量砸盘"，保证每个策略都能产生交易。
+   第 5 轮起（合成数据第 2 版）还有：第 5 轮的新币 NEW1 ~ NEW10（上线晚；NEW2、NEW5、NEW8 中途下架，其中 NEW8 在交易对规格里已经没有；
+   NEW9 是 2020 年上线的，NEW10 是 2025-12 上线的）、现货 1h K线（偶尔有人为制造的"永续相对现货溢价"极端值）、8 个全市场暴跌日，
+   资金费有 8 小时和 4 小时结算的币。另外生成 `user_data/data/binance-synthetic/`（25 个币，资金费率和标记价格覆盖全部区间，给 XSFundingCarry 用）
+   和新币上线日文件 `user_data/listings/okx-synthetic_first_candle.json`。旧版合成数据（第 4 轮以前生成的）在 `make synthetic-test`、
+   或研究第 5 轮新策略时自动重新生成；想要第 4 轮以前那份（8 个币，没有现货 / 暴跌日 / 新币，和以前完全相同）：`make synthetic-data ARGS="--legacy"`。
 2. 用 `configs/config.synthetic-test.json` 批量回测全部策略 + 账户回撤检查（上限默认 15%），结果放在 `user_data/backtest_results/synthetic/run_<时间>/`。
 3. `scripts/check_live_guards.py` 检查只在模拟盘/实盘才会出现、回测测不到的保护逻辑：
    止损没能挂上而价格已越过时立即平仓（`rust_stop_breached` / `rust_stop_invalid`，第 2 步新策略是 `et_stop_breached` / `et_stop_invalid`），
    日线信号只在 K 线收盘后 10 分钟内入场（详见 `docs/strategies.md` 1.3 和第 8 节第 19 条），
    K 线成交量单位（`scripts/check_volume_units.py`），以及第 2 步新策略的杠杆上限（永远 ≤ 5 倍）和按止损距离定仓。
-4. 对 3 个移植策略、SampleFuturesSanity、第 2 步的 6 个新策略和第 3 轮的 `XSMomentum`、`BigTrendShortLowRisk` 跑 freqtrade 的 `lookahead-analysis`（未来函数检查）和 `recursive-analysis`（指标预热检查），
+4. 对 3 个移植策略、SampleFuturesSanity、第 2 步的 6 个新策略、第 3 轮的 `XSMomentum`、`BigTrendShortLowRisk` 和第 5 轮的 `PremiumFade`、`CapitulationRebound`、
+   `NewListingShortHedged`（用"OKX 全部永续"配置）、`XSFundingCarry`（用币安合成数据）跑 freqtrade 的 `lookahead-analysis`（未来函数检查）和 `recursive-analysis`（指标预热检查），
    日志和 CSV 放在同一目录的 `analysis/` 里。时间段从合成数据的最后一天往前倒推（不是从"今天"），所以数据生成几天后再跑也一样。
 
 **合成数据的收益、回撤、胜率没有任何意义**，只看"每一步有没有报错"。回撤检查"未通过"在合成数据上是正常的。
@@ -611,6 +836,10 @@ make research-nfi-yearly-synthetic       # 第 4 轮 NFI 逐年回测流程自�
   所以那一行的多周期偏向和完整数据不同。实际回测和实盘里，日线收盘后才会用这一行，那时当天的 4h/1h K 线都已收盘。
   判断标准是 `biased_entry_signals`（入场信号偏差）和 `biased_exit_signals`（离场信号偏差）都为 0。
   另外用"只保留当时已经收盘的 K 线重新计算"的方法单独验证过，三个策略抽查的行全部一致。
+- **XSFundingCarry 用更多信号做 lookahead-analysis（例如 `--targeted-trade-amount 100`）会报几笔"入场/离场偏差"，这是误报**：
+  这个工具截断数据重跑时白名单只剩一个币，账户里没有别的腿，组合热度上限（8%）和回撤降仓都不起作用；完整回测里有些腿因为热度满了没开，
+  截断重跑时却开了，之后这个币的开仓、止损日期就和完整回测不一样。合成数据上 100 笔里入场 7 笔、离场 2 笔对不上，没有任何指标列被标记；
+  只在临时副本里关掉热度上限和回撤降仓再跑，100 笔全部一致。`make synthetic-test` 用 20 笔，结果是 0。
 - **recursive-analysis 里 `ema200`（以及 1d 策略的 `mtf_bias_1h` 等多周期列）在 300 根预热时有差异，这不是未来函数**：
   talib 的 EMA200 从前 200 根的简单平均起步，300 根预热时只往后递推了 100 次，起点的误差还剩约 37%（(1 − 2/201)^100），
   实测 EMA200 差约 6%；600 根时只剩约 2%。freqtrade 每次回测只在 `--timerange` 开始前多加载 `startup_candle_count`（300）根，
@@ -794,8 +1023,8 @@ make down        # 停止
 
 | 阶段 | 内容 | 在哪运行 | 状态 |
 |---|---|---|---|
-| 1 回测研究 | OKX 数据回测，筛选满足"账户回撤 ≤ 15%（2026-11-07 起；以前 8%）、杠杆 ≤ 5x"的策略 | 美国 VPS / Mac | **进行中** |
-| 1.5 币安复核 | 用币安数据重新回测确认 | 币安允许地区的服务器 | 待开始 |
+| 1 回测研究 | OKX 数据回测，筛选满足"账户回撤 ≤ 15%（2026-11-07 起；以前 8%）、杠杆 ≤ 5x"的策略 | 美国 VPS / Mac | **进行中**：第 5 轮 4 个新机制已预注册（见「第 5 步」），等正式运行 |
+| 1.5 币安复核 | 用币安数据重新回测确认 | 币安允许地区的服务器 | 待开始（第 5 轮的 XSFundingCarry 和两个策略的第二阶段在这里跑，见「第 5 步」） |
 | 2 模拟盘 + 提醒 | 币安 dry-run + 中文 Telegram 通知 | 币安允许地区的服务器 | **准备好了**：第 4 轮冻结版 NFI 1 倍模拟盘 + 看门狗 + 前向报告（见「第 4 步」），等逐年回测结论后启动 |
 | 3 自动实盘 | 小资金实盘，稳定后加资金 | 币安允许地区的服务器 | 待开始 |
 | 另 | FreqUI 网页汉化 | 所有环境 | **已完成**（见「FreqUI 中文界面」） |

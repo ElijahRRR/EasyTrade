@@ -303,6 +303,56 @@ def test_max_dd_rule() -> None:
           len([x for x in rp.judge(res, {"max_dd": 8}, True) if "回撤" in x]), 3)
 
 
+def test_reference_corr() -> None:
+    print("12b. 第 5 轮：和参考趋势策略的相关系数（训练段日收益，只报告）；--run-dirs 合并的规则")
+    plan = {"train": ["2025-01-01", "2025-01-21"], "test": ["2025-02-01", "2025-02-10"], "wf": {"folds": []}}
+    up = [1000.0]
+    for k in range(20):
+        up.append(up[-1] * (1.01 if k % 3 else 0.98))
+    down = [1000.0 * 1000.0 / v for v in up]  # 每天正好反着走
+    ref = rp.curve_from_points(days(21), up, start=1000)
+    same = rp.curve_from_points(days(21), [1000 + 2 * (v - 1000) for v in up], start=1000)
+    inv = rp.curve_from_points(days(21), down, start=1000)
+    rows = [{"strategy": n, "variant": "default", "train": {"trades": 5}, "test": None}
+            for n in ("TsmomTrend", "DonchianTrend", "Same", "Inverse", "NoTrain")]
+    rows[4]["train"] = None
+    rows.append({"strategy": "Same", "variant": "opt", "train": {"trades": 5}, "test": None})  # 优化参数那一行不算
+    cache = {"TsmomTrend": {"curve": ref, "infos": [1] * 5}, "DonchianTrend": {"curve": rp.flat_curve(1000), "infos": []},
+             "Same": {"curve": same, "infos": [1] * 5}, "Inverse": {"curve": inv, "infos": [1] * 5}}
+    rc = rp.reference_correlations(plan, rows, cache)
+    check("参考策略 = 这次有的 TsmomTrend、DonchianTrend（XSMomentum、BigTrendShort 没有就不列）",
+          ",".join(rc["refs"]), "TsmomTrend,DonchianTrend")
+    check("候选 = 其余默认参数的策略", ",".join(rc["candidates"]), "Same,Inverse,NoTrain")
+    # Same 的日收益不是 TsmomTrend 的倍数（权益放大两倍不等于收益率放大两倍），只要求同向、很高
+    check("同涨同跌的候选：相关系数 > 0.99", 1.0 if rc["matrix"][0][0] > 0.99 else 0.0, 1.0)
+    check("正好反着走的候选：相关系数 < -0.99", 1.0 if rc["matrix"][1][0] < -0.99 else 0.0, 1.0)
+    check("参考策略一笔交易都没有（DonchianTrend）→ 算不出来", [rc["matrix"][0][1], rc["matrix"][1][1]], [None, None])
+    check("候选训练段没有结果 → 算不出来", rc["matrix"][2], [None, None])
+    none = rp.reference_correlations(plan, [r for r in rows if r["strategy"] in ("Same", "Inverse")], cache)
+    check("没有参考策略 → 不算，说明原因", bool(none["skip"]) and not none["matrix"], True)
+
+    def p(name: str, exch: str, test_end: str) -> dict:
+        return {"_run_dir": f"/x/{name}", "exchange": exch, "train": ["2021-01-01", "2024-10-31"],
+                "test": ["2024-11-01", test_end], "holdout": ["2021-01-01", "2023-12-31"], "wf": {"folds": []},
+                "settings": {"max_dd": 15, "fee": 0.0007}}
+
+    a_rows = [{"strategy": "TsmomTrend", "variant": "default"}, {"strategy": "PremiumFade", "variant": "default"}]
+    b_rows = [{"strategy": "XSFundingCarry", "variant": "default"}, {"strategy": "TsmomTrend", "variant": "default"}]
+    pa, pb = p("run_okx", "okx", "2026-11-07"), p("run_bn", "binance", "2026-11-05")
+    merged, rows_m = rp.merge_runs([(pa, a_rows), (pb, b_rows)])
+    mg = merged["_merged"]
+    check("两个交易所 → 标注\"跨交易所近似\"", mg["label"], rp.CROSS_EXCHANGE_LABEL)
+    check("合并后的策略（同名的用前面那个目录的）", ",".join(r["strategy"] for r in rows_m), "TsmomTrend,PremiumFade,XSFundingCarry")
+    check("每一行带着它自己那次研究的 plan（读K线用自己的数据目录）", ",".join(r["_plan"]["exchange"] for r in rows_m),
+          "okx,okx,binance")
+    check("区间、settings 按第一个目录", (merged["test"][1], merged["exchange"]) == ("2026-11-07", "okx"), True)
+    check("样本外结束日不一样 → 1 条提醒；重名 → 1 条提醒", (len(mg["window_diff"]), len(mg["dups"])), (1, 1))
+    same_ex, _ = rp.merge_runs([(p("r1", "okx", "2026-11-07"), [{"strategy": "A", "variant": "default"}]),
+                                (p("r2", "okx", "2026-11-07"), [{"strategy": "B", "variant": "default"}])])
+    check("同一个交易所的两个目录 → \"多个运行目录合并（近似）\"，没有区间提醒",
+          (same_ex["_merged"]["label"], same_ex["_merged"]["window_diff"]) == ("多个运行目录合并（近似）", []), True)
+
+
 def _raises(fn, *args) -> bool:
     try:
         fn(*args)
@@ -375,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     test_candle_curve()
     test_selection()
     test_max_dd_rule()
+    test_reference_corr()
     if a.run_dir:
         check_run(a.run_dir)
     print()

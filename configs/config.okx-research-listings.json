@@ -1,0 +1,69 @@
+{
+    // ============================================================
+    // 第 5 轮：OKX 全部 USDT 永续"新币做空"研究配置（NewListingShortHedged 专用，scripts/research.sh / make research 使用）
+    // 预注册规格：docs/round5-preregistration.md 第 2.4 节（第一阶段：OKX 全部 USDT 永续，不只是研究币池，1d，美国 VPS）。
+    //
+    // 和 config.okx-research.json 一样（OKX USDT 永续、逐仓、1000 USDT、只回测不下单、手续费由研究脚本的 --fee 0.0007 给），区别：
+    //   1. 交易对 = OKX 全部 USDT 永续（正则），BTC/USDT:USDT 放在最后（对冲腿）：
+    //        "(?!BTC/USDT:USDT$).*/USDT:USDT" = 除了 BTC 以外的所有 xxx/USDT:USDT；后面再单独写 BTC。
+    //      为什么 BTC 要在最后：freqtrade 回测在同一根K线里先处理有持仓的币，再按白名单顺序处理其他币。
+    //      BTC 排在最后，对冲单第一次开仓时，同一天开盘新开的新币空单已经算进去了（排在前面就要晚一天）。
+    //      下载：bash scripts/download_okx_data.sh --config configs/config.okx-research-listings.json --timerange <开始>- --timeframes "1h 1d"
+    //      （正则由 freqtrade 按交易所现有的合约展开；下载脚本自带 --include-inactive-pairs。
+    //       OKX 是否还给已下架合约的数据没有核实，要记下实际拿回了哪些已下架的币：scripts/build_listings.py 会列出"数据停止更新"的币）。
+    //      回测：StaticPairList 加 allow_inactive（交易所标成"不活跃"的币不去掉）。freqtrade 2026.10 回测时把正则按交易所
+    //      当前的合约列表展开（plugins/pairlist/pairlist_helpers.py expand_pairlist），交易所已经删掉的合约展不出来；
+    //      研究脚本按本地有数据的币展开后写进 pairs.effective.json（BTC 仍在最后）。
+    //      也可以先生成一个具体的交易对片段再直接回测：
+    //        .venv/bin/python scripts/build_listings.py --datadir user_data/data/okx --data-start <下载开始日期> --write-pairs user_data/listings/okx_pairs.json
+    //        .venv/bin/freqtrade backtesting --config configs/config.okx-research-listings.json --config user_data/listings/okx_pairs.json \
+    //            --strategy NewListingShortHedged --timerange 20210101- --fee 0.0007
+    //   2. position_adjustment_enable = true：对冲单每天 00:00 UTC 按空单名义金额加减仓（偏离超过 10% 才调）。
+    //   3. max_open_trades = 40：同时最多约 12 笔空单是由组合热度上限 6% 决定的（策略类属性），这里只是不让 freqtrade 的名额
+    //      先于热度上限挡住开仓（12 笔空单 + 1 笔对冲远小于 40）；每笔开多少由策略按止损距离算，stake_amount = "unlimited" 只是上限。
+    //      configs/research-overrides/NewListingShortHedged.json 里写的是同样的值（研究脚本按策略叠加）。
+    //   4. 上线日：策略读 user_data/listings/okx_first_candle.json（scripts/build_listings.py 扫描完整的本地 1d 数据生成），
+    //      回测前必须先生成；没有这个文件策略一笔都不开（日志里有中文错误）。想用别的文件，在这里加 "nlsh_listings_file": "<路径>"。
+    //   5. 用法（预注册 3.3 节"运行 B"）：
+    //        RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 make research ARGS="--config configs/config.okx-research-listings.json --strategies NewListingShortHedged"
+    //
+    // OKX 的资金费率历史只有最近约 3 个月，更早的资金费按 0 近似（同 config.okx-research.json）。
+    // 新币空头常常要付很高的负资金费，回测里算不到，所以这一阶段的结果只是上限（第二阶段用币安带真实资金费的数据）。
+    // 不需要 API Key（只用公开行情）；密钥、服务器地址一律不要写进本文件。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json"
+    ],
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "max_open_trades": 40,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+    "position_adjustment_enable": true,
+
+    "exchange": {
+        // 回测只用公开行情，不需要 API Key
+        "name": "okx",
+        "key": "",
+        "secret": "",
+        "password": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {},
+        "pair_whitelist": [
+            "(?!BTC/USDT:USDT$).*/USDT:USDT",
+            "BTC/USDT:USDT"
+        ]
+    },
+
+    "pairlists": [
+        { "method": "StaticPairList", "allow_inactive": true }
+    ],
+
+    // 缺资金费率数据的时间段按"资金费为 0"计算（OKX 只能下载最近约 3 个月）
+    "futures_funding_rate": 0
+}

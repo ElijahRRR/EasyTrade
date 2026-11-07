@@ -1,0 +1,51 @@
+{
+    // ============================================================
+    // 第 5 轮：币安 U 本位永续"策略研究"配置（scripts/research.sh / make research 使用）
+    //
+    // !! 只能在币安服务的地区的服务器上运行（下载数据、回测都要连币安）。美国的服务器会被币安拒绝（HTTP 451），
+    // !! 不要用代理/VPN 绕过地区限制 —— 这违反币安条款。OKX 的研究照旧在美国 VPS 上用 config.okx-research.json。
+    //
+    // 和 config.okx-research.json 一样（USDT 永续、逐仓、1000 USDT、只回测不下单、手续费由研究脚本的 --fee 0.0007 给），区别：
+    //   1. 交易所 = binance，交易对 = pairs.binance-research.json（和 OKX 研究币池同一批 60 个币）。
+    //   2. 资金费率和标记价格用币安的真实历史（资金费从 2019-09 起），所以不写 futures_funding_rate
+    //      （OKX 配置写 0 是因为 OKX 只有最近约 3 个月资金费）。回测时 freqtrade 按 "标记价格 x 资金费率"
+    //      逐次结算算 funding_fees，两种数据缺一种的时间段资金费按 0 算（研究报告会数 funding_fees 为 0 的交易占比）。
+    //   3. 下载：合约模式下 freqtrade 自动连标记价格（mark，1h）和资金费率（funding_rate，1h 周期、每次结算一行）一起下，
+    //      周期由 freqtrade 按交易所设置决定，不随 --timeframes 变，所以这里不写 candle_types
+    //      （写了反而会让标记价格只按 --timeframes 下，漏掉 1h 时资金费就全算成 0）。
+    //      make research 第 1 步会自动下载（研究脚本检查 1h 4h 1d 三个周期都在）；要自己先下也可以，例如：
+    //        bash scripts/download_okx_data.sh --config configs/config.binance-research.json --timerange 20190901- --timeframes "1h 4h 1d"
+    //      数据存到 user_data/data/binance/futures/。
+    //   4. 用法：make research ARGS="--config configs/config.binance-research.json --strategies XSFundingCarry"
+    //      max_open_trades 这里和 OKX 研究配置一样是 5；需要更多名额的策略在 configs/research-overrides/<策略>.json 里改
+    //      （XSFundingCarry 是 20）。
+    // 不需要 API Key（只用公开行情）；密钥、服务器地址一律不要写进本文件。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json",
+        "pairs.binance-research.json"
+    ],
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "max_open_trades": 5,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    "exchange": {
+        // 回测只用公开行情，不需要 API Key
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {}
+    },
+
+    "pairlists": [
+        { "method": "StaticPairList" }
+    ]
+}
