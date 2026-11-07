@@ -1,0 +1,32 @@
+{
+    // ============================================================
+    // 第 3 轮：截面动量 XSMomentum 在币安 U 本位永续上的 模拟盘(dry-run) / 实盘配置（单独一个机器人、一个子账户）。
+    //
+    // 在 config.binance-futures.json 的基础上只改三处（其余设置、风险提示、密钥来源都和它一样，先读那个文件开头的说明）：
+    //   1. 交易对 = pairs.binance-research.json（和研究排名的是同一批约 60 个币），不是 20 个币的 pairs.binance-usdt-perp.json；
+    //      截面排名的"前 3 / 后 3 名"在 20 个币里是另一个策略，研究结果对它不成立；
+    //   2. max_open_trades = 6：默认多空各 3 笔（top_k = 3），名额少于 6 时策略会自动缩成多空各 2 笔；
+    //   3. 机器人名字 / FreqUI 端口（8081）和另一个机器人分开，两个机器人可以在同一台服务器上同时跑。
+    //
+    // 子账户：每个策略一个币安子账户、一个机器人（docs/strategies-round3.md 第 3 节）。这个机器人要用 XSMomentum 那个
+    // 子账户自己的 API Key（环境变量 FREQTRADE__EXCHANGE__KEY / SECRET 按机器人分开设置），还要用自己的数据库文件，
+    // 启动时加 --db-url，例如（模拟盘）：
+    //   .venv/bin/freqtrade trade --config configs/config.binance-xsmomentum.json --strategy XSMomentum \
+    //       --db-url sqlite:///user_data/tradesv3.xsmomentum.dryrun.sqlite --logfile user_data/logs/xsmomentum.log
+    // dry_run_wallet 改成这个子账户实际分到的钱（例如组合检查里的权重 × 总资金），模拟盘的仓位大小才和实盘一样。
+    // Telegram：两个机器人不能共用同一个 Telegram 机器人 Token（会互相抢消息，日志里报 Conflict），
+    // 这个机器人要用自己的 Token（在 @BotFather 再建一个，FREQTRADE__TELEGRAM__TOKEN 按机器人分开设置），或者先不开 Telegram。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.binance-futures.json",
+        "pairs.binance-research.json"
+    ],
+
+    "bot_name": "binance-quant-xsmomentum",
+    "max_open_trades": 6,
+
+    "api_server": {
+        "listen_port": 8081
+    }
+}

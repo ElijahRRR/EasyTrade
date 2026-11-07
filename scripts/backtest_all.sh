@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------
-# 批量回测：策略 × 周期，结果统一存到一个批次目录，最后自动做 8% 回撤检查
+# 批量回测：策略 × 周期，结果统一存到一个批次目录，最后自动做账户回撤检查（上限默认 15%，见 --max-dd）
 #
 # 用法：
 #   bash scripts/backtest_all.sh                                   # 回测 user_data/strategies 里全部策略
@@ -8,7 +8,8 @@
 #   bash scripts/backtest_all.sh --timeframes "15m 1h 4h"          # 强制用这些周期各测一遍
 #   bash scripts/backtest_all.sh --timerange 20240101-20250101     # 指定回测区间
 #   bash scripts/backtest_all.sh --detail 1m                       # 用 1m 数据模拟K线内部走势（更准、更慢）
-#   bash scripts/backtest_all.sh --max-dd 8                        # 回撤上限（%），默认 8
+#   bash scripts/backtest_all.sh --max-dd 12                       # 回撤上限（%），默认 15 = 项目硬规则
+#                                                                  # （也可以用环境变量：MAX_DD_PCT=12 make backtest）
 #   bash scripts/backtest_all.sh --config configs/config.binance-futures.json   # 以后用币安数据复核
 #   bash scripts/backtest_all.sh --config configs/config.synthetic-test.json    # 合成数据流程自检（不联网）
 #   其他参数原样传给 freqtrade backtesting，例如 --fee 0.0005、--max-open-trades 3
@@ -20,7 +21,7 @@
 #     不想要就加 --no-protections。
 #   * 默认 --cache none，保证每次都是重新计算。
 #   * 结果目录：user_data/backtest_results/run_<时间>/
-#       backtest-result-*.zip   freqtrade 原始结果（8% 回撤检查读这里）
+#       backtest-result-*.zip   freqtrade 原始结果（回撤检查读这里）
 #       logs/<策略>__<周期>.log 每次回测的完整输出
 #       summary.txt / summary.csv  回撤检查汇总表
 #   * FreqUI 的 Backtest 历史列表只认 user_data/backtest_results/ 这一层的文件（不看子目录），
@@ -37,7 +38,8 @@ STRATEGIES=""
 TIMEFRAMES=""
 TIMERANGE=""
 DETAIL=""
-MAX_DD="8"
+# 默认 = 环境变量 MAX_DD_PCT，没设时 15（项目硬规则，定义在 scripts/_common.sh / scripts/check_drawdown.py）
+MAX_DD="$MAX_DD_PCT"
 PROTECTIONS="yes"
 EXTRA=()
 
@@ -50,10 +52,11 @@ while [[ $# -gt 0 ]]; do
         --detail)          DETAIL="$2"; shift 2 ;;
         --max-dd)          MAX_DD="$2"; shift 2 ;;
         --no-protections)  PROTECTIONS="no"; shift ;;
-        -h|--help)         sed -n '2,32p' "$0"; exit 0 ;;
+        -h|--help)         sed -n '2,/^# -----/p' "$0"; exit 0 ;;
         *)                 EXTRA+=("$1"); shift ;;
     esac
 done
+[[ "$MAX_DD" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "参数错误：--max-dd / MAX_DD_PCT 要是数字（单位 %，例如 15；收到：$MAX_DD）" >&2; exit 1; }
 
 RESULTS_BASE="user_data/backtest_results"
 # FreqUI 只列这个目录本层的回测结果（freqtrade api_backtest_history 不看子目录）

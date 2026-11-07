@@ -26,7 +26,7 @@ FundingContrarian -- 资金费率极端时的反向交易 ("拥挤方向" + "动
         (2) 吊灯止损: 持仓以来最低价 (做多 = 最高价) +/- trail_atr_mult x 入场 ATR, 只收紧
         (3) 超时: 持有满 max_hold_candles 根 (默认 48 根 = 1h 策略 2 天)
   保护  同一个币: 平仓后冷却 4 根; 48 根内被止损 2 次 -> 这个币暂停 24 根
-  仓位  easytrade_risk: 每笔打到止损亏总资金 0.5%, 组合热度 <= 3%, 杠杆 <= 2 (硬上限 5)
+  仓位  easytrade_risk: 每笔打到止损亏总资金 1%, 组合热度 <= 6%, 杠杆 <= 2 (硬上限 5)
 
 可 hyperopt 的参数 3 个: fund_extreme / stop_atr_mult / trail_atr_mult。
 !! OKX 只有约 3 个月资金费率, 不够分 "训练段 / 验证段", 现在不要调参, 先用默认值观察 (见文档)。

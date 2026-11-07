@@ -17,6 +17,14 @@ cd "$ROOT_DIR"
 
 COMPOSE_FILE="docker/docker-compose.yml"
 
+# 硬规则：账户权益（含浮亏）最大回撤上限，单位 %。2026-11-07 起 15（以前是 8，第 1、2 轮按 8 判）。
+# 必须和 scripts/check_drawdown.py 的 DEFAULT_MAX_DD_PCT 相同（scripts/check_portfolio_math.py 会核对）。
+# 临时改：MAX_DD_PCT=12 make research / make backtest / make check（各脚本的 --max-dd 优先）。
+# export：venv / PATH 方式运行的 Python 脚本直接读到同一个值；Docker 方式由 py_ft 传进容器。
+EASYTRADE_DEFAULT_MAX_DD_PCT=15
+MAX_DD_PCT="${MAX_DD_PCT:-$EASYTRADE_DEFAULT_MAX_DD_PCT}"
+export MAX_DD_PCT
+
 # docker compose 命令（.env 由 compose 文件里的 env_file 读取，这里不用管）
 compose_cmd() {
     docker compose -f "$ROOT_DIR/$COMPOSE_FILE" "$@"
@@ -44,7 +52,7 @@ _offline_py() {
     if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
         "$ROOT_DIR/.venv/bin/python" "$@"
     elif command -v docker >/dev/null 2>&1; then
-        compose_cmd run --rm -T --entrypoint python cli "$@"
+        compose_cmd run --rm -T -e "MAX_DD_PCT=$MAX_DD_PCT" --entrypoint python cli "$@"
     else
         python3 "$@"
     fi
@@ -74,10 +82,11 @@ py_ft() {
         path)   python3 "$@" ;;
         synthetic) _offline_py "$@" ;;
         docker)
+            # -e MAX_DD_PCT：把回撤上限（见上面）传进容器，check_drawdown.py 等脚本的默认值才和这里一致
             if [[ -t 0 && -t 1 ]]; then
-                compose_cmd run --rm --entrypoint python cli "$@"
+                compose_cmd run --rm -e "MAX_DD_PCT=$MAX_DD_PCT" --entrypoint python cli "$@"
             else
-                compose_cmd run --rm -T --entrypoint python cli "$@"
+                compose_cmd run --rm -T -e "MAX_DD_PCT=$MAX_DD_PCT" --entrypoint python cli "$@"
             fi ;;
     esac
 }

@@ -17,7 +17,7 @@ BigTrendShort 里的做多逻辑也已移植, 只是默认关闭):
 出场 / 风控 (easytrade_risk, 和 BigTrendShort 不同):
   止损  入场价 -/+ stop_atr_mult x ATR14 (= BigTrendShort 的可选 stop_mode "atr", 默认 3 倍)
   超时  持有满 max_hold_candles 根 K 线 (默认 13 = Rust 的 12 天 timeout + 1 根) 平仓
-  仓位  每笔打到止损亏总资金 0.5%, 组合热度 <= 3%, 杠杆 <= 2 (硬上限 5)
+  仓位  每笔打到止损亏总资金 1%, 组合热度 <= 6%, 杠杆 <= 2 (硬上限 5)
 
 可 hyperopt 的参数 2 个 (只在训练段调参): stop_atr_mult / max_hold_candles。
 说明文档: docs/strategies-step2.md "趋势类 / BigTrendBoth"。

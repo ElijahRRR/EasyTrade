@@ -9,6 +9,8 @@
   hyperopt     运行 freqtrade hyperopt（带一个 freqtrade 2026.10 并行 bug 的绕过，见 _patch_pickle_magic）
   best-params  从 hyperopt 结果文件（.fthypt）取出最优参数，写成 freqtrade 的策略参数文件
   report       汇总成中文排名表：summary.txt / summary.csv / summary.json
+               回撤上限按 plan.json 里记的值判（研究运行时的 --max-dd / MAX_DD_PCT，默认 15% = 项目硬规则）；
+               加 --max-dd 12 可以按别的上限重新判一次（不重跑回测、不改 plan.json，报告抬头会注明）
 
 账户回撤口径和 scripts/check_drawdown.py 完全一样（直接调用它的函数）：
 账户权益 = 已平仓余额 + 所有持仓的浮动盈亏，逐根K线计算。
@@ -35,11 +37,18 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import check_drawdown as cd
+import research_portfolio  # 子账户组合检查（render 末尾调用）
 
 
 MAX_LOSS = 100000  # freqtrade hyperopt 给"交易数不够"的组合的损失值
 DEFAULT_START_BALANCE = 1000.0
 VARIANT_CN = {"default": "默认参数", "opt": "优化参数"}
+# 截面策略（XSMomentum）回测日志里的固定标记：前 K 名的币因为仓位低于最小下单额开不出来 / 被 freqtrade 放大。
+# 和 user_data/strategies/XSMomentum.py 的 MIN_STAKE_SKIP_TAG / MIN_STAKE_BUMP_TAG 相同，改的话两边一起改
+MIN_STAKE_SKIP_TAG = "[最小下单额:开不出来]"
+MIN_STAKE_BUMP_TAG = "[最小下单额:放大]"
+# "低风险版"和原版：信号完全相同、只有仓位不同。报告里逐笔对比，核对"仓位减半"是不是真的成立
+LOWRISK_OF = {"BigTrendShortLowRisk": "BigTrendShort"}
 
 
 # ----------------------------------------------------------------------------
@@ -223,6 +232,16 @@ def _syntax_error_text(err: dict[str, Any]) -> str:
 
 def cmd_timeframes(a: argparse.Namespace) -> int:
     info = scan_strategies(Path(a.strategy_dir), a.strategies.split(), a.detail)
+    if a.print == "download-start":
+        # 下载从哪天开始 = 研究开始日期往前推"最长的指标预热"（max(策略的 startup_candle_count, --warmup-candles) 根K线），
+        # 这样训练段第一天指标就是热的、和后面各段一样（交易所没有那么早的数据时，有多少给多少）
+        days = 0
+        for i in info.values():
+            tf_sec = cd._tf_seconds(i["timeframe"]) if i["timeframe"] else 0
+            if i["found"] and tf_sec > 0:
+                days = max(days, math.ceil(max(int(i["startup"]), int(a.warmup_candles)) * tf_sec / 86400))
+        print(_ymd(_day(a.start) - timedelta(days=days)))
+        return 0
     tfs = set(a.timeframes.split())
     for i in info.values():
         tfs.update(t for t in (i["timeframe"], i["detail"]) if t)
@@ -267,6 +286,8 @@ def _seg_label(label: str) -> str:
         return "训练段"
     if label == "test":
         return "样本外"
+    if label == "holdout":
+        return "没看过的一段"
     if label.startswith("wf") and label.endswith("train"):
         return f"走步第 {label[2:-5]} 折训练窗口"
     if label.startswith("wf"):
@@ -277,6 +298,29 @@ def _seg_label(label: str) -> str:
 def _ceil_day(dt: datetime) -> date:
     d = dt.date()
     return d if dt == datetime(d.year, d.month, d.day, tzinfo=dt.tzinfo) else d + timedelta(days=1)
+
+
+def seen_warning(S: date, T0: date, E: date, seen: date | None, holdout: tuple[date, date] | None) -> list[str]:
+    """样本外有没有被以前的研究看过（第 3 轮复查）：返回要写进 data_check.txt / summary.txt 的几行，没有就是空列表。
+
+    seen = 以前的研究（第 2 轮）用过的数据从哪天开始（RESEARCH_SEEN_FROM，默认 2024-01-01）。
+    第 3 轮的策略选择（去掉 1h 策略、BigTrendShortLowRisk 的仓位等）是看着第 2 轮在这段数据上的结果定的，
+    所以落在这段里的样本外不是独立证据。
+    """
+    if seen is None or seen > E:
+        return []
+    out: list[str] = []
+    if seen <= T0:
+        out.append(f"!! 样本外这段第 2 轮已经看过（第 2 轮用的是 {seen} 以后的数据）：第 3 轮的策略选择 / BigTrendShortLowRisk 的仓位")
+        out.append("   是看着它定的，所以样本外不是独立证据（不是\"从没见过\"）。")
+    else:
+        out.append(f"!! 样本外里 {seen} 以后的那部分第 2 轮已经看过：第 3 轮的策略选择 / BigTrendShortLowRisk 的仓位是看着它定的，")
+        out.append("   那部分不是独立证据。")
+    if holdout is not None:
+        out.append(f"   真正没看过的只有 {_iso(holdout[0])} ~ {_iso(holdout[1])}（训练段的前一部分，\"没看过的一段\"），以它为准。")
+    elif S >= seen:
+        out.append("   这次的全部数据第 2 轮都看过，没有\"没看过的一段\"：结果只能当参考，不能当证据。")
+    return out
 
 
 def cmd_prepare(a: argparse.Namespace) -> int:
@@ -321,10 +365,11 @@ def cmd_prepare(a: argparse.Namespace) -> int:
         req_tfs.update(t for t in (strategies[n]["timeframe"], strategies[n]["detail"]) if t)
     req_tfs_sorted = sorted(req_tfs, key=cd._tf_seconds)
     req_start = _day(a.start)
-    tol = timedelta(days=a.max_start_gap_days)
 
     scans: dict[str, dict[str, Any]] = {}
     dropped: dict[str, str] = {}
+    # 去掉的原因按类合并成一行显示；每个币自己的日期放这里（显示成 "ZEC(2025-11-06 起)"）
+    dropped_detail: dict[str, str] = {}
     for pair in whitelist:
         per_tf = {}
         for tf in req_tfs_sorted:
@@ -349,26 +394,30 @@ def cmd_prepare(a: argparse.Namespace) -> int:
         )
         return 1
 
-    req_start_dt = datetime(req_start.year, req_start.month, req_start.day, tzinfo=timezone.utc)
-    ref_start = max(req_start_dt, min(v["first"] for v in scans.values()))
+    # ---- 上线晚的币不再整个去掉（第 3 轮起）----
+    # 以前：比开始日期晚 30 天以上才有数据的币全部去掉 —— 数据从 2021 年开始时，2022 年以后上线的币就全没了。
+    # 现在：只要"样本外开始之前"至少有 --min-train-days 天（默认 365）"能交易"的历史就保留（见下面"上线晚的币"）；
+    #   回测区间对所有币都一样，上线晚的币要等 第一根K线 + 这一段的指标预热 之后才开始交易（freqtrade 按根数裁掉预热K线）。
+    # 中途断了（已下架/没更新）的币照样去掉；历史太短的币照样去掉。
     ref_end = max(v["end"] for v in scans.values())
-    kept = []
+    alive: dict[str, dict[str, Any]] = {}
     for pair, v in scans.items():
-        if v["first"] > ref_start + tol:
-            late = (v["first"].date() - ref_start.date()).days
-            dropped[pair] = f"数据从 {v['first'].date()} 才开始（比 {ref_start.date()} 晚 {late} 天，可能上线晚）"
-        elif v["end"] < ref_end - timedelta(days=3):
-            dropped[pair] = f"数据在 {v['end'].date()} 就断了（可能已下架或没更新）"
+        if v["end"] < ref_end - timedelta(days=3):
+            dropped[pair] = "数据中途断了（可能已下架或没更新）"
+            dropped_detail[pair] = f"到 {v['end'].date()} 为止"
         else:
-            kept.append(pair)
-    if not kept:
+            alive[pair] = v
+    if not alive:
         print("错误：没有一个交易对的数据能覆盖研究区间。", file=sys.stderr)
         return 1
-    S = max(req_start, _ceil_day(max(scans[p]["first"] for p in kept)))
-    E = min(scans[p]["end"] for p in kept).date()
+    # 研究区间 S ~ E：从"最早有数据的币"开始（不早于 --start），到大家都有数据的最后一天。
+    # 比 S 更早的K线（下载时多下的那段）只用来给指标预热，不参与交易。
+    data_first = _ceil_day(min(v["first"] for v in alive.values()))
+    S = max(req_start, data_first)
+    E = min(v["end"] for v in alive.values()).date()
     total = (E - S).days
     if total < 120:
-        print(f"错误：共同数据区间只有 {total} 天（{S} ~ {E}），太短，没法切分训练段/样本外。", file=sys.stderr)
+        print(f"错误：数据区间只有 {total} 天（{S} ~ {E}），太短，没法切分训练段/样本外。", file=sys.stderr)
         return 1
 
     # ---- 切分（按 UTC 自然日；freqtrade 的 --timerange 结束日期是"包含"的，
@@ -378,14 +427,82 @@ def cmd_prepare(a: argparse.Namespace) -> int:
     train = (S, T0 - timedelta(days=1))
     test = (T0, E)
 
+    # ---- 以前的研究已经看过的数据（第 3 轮复查）----
+    # 第 2 轮用的是 2024-01-01 以后的数据，第 3 轮的策略选择（例如 BigTrendShortLowRisk 的仓位、去掉 1h 策略）是看着它定的。
+    # 第 3 轮的样本外（最后约 1/3）整段都在这里面，所以不是独立证据。真正没人看过的只有 S ~ seen_from 前一天，
+    # 它在训练段里；单独回测一次（"holdout" 这一段，只用默认参数），报告里单独列出来。
+    seen = _day(a.seen_from) if a.seen_from else None
+    holdout: tuple[date, date] | None = None
+    if seen is not None and S < seen:
+        h_end = min(train[1], seen - timedelta(days=1))
+        if (h_end - S).days + 1 >= 60:
+            holdout = (S, h_end)
+
+    # ---- 每个策略的周期 / 预热天数（下面"保留哪些币"要用）----
+    def warm_days_of(info: dict[str, Any], candles: int) -> int:
+        tf_sec = cd._tf_seconds(info["timeframe"]) if info["timeframe"] else 0
+        return math.ceil(int(candles) * tf_sec / 86400) if tf_sec else 0
+
+    # 训练段从数据开头开始，只给策略自己的预热长度（见下面"每一段回测的指标预热长度"）；预热最长的策略决定"哪天能交易"
+    w_train = max((warm_days_of(strategies[n], strategies[n]["startup"]) for n in found), default=0)
+
+    # ---- 上线晚的币：样本外开始前要有至少 min_train 天"能交易"的历史 ----
+    # freqtrade 回测按根数裁掉每个币自己开头的预热K线，一个币在训练段里要到 第一根K线 + 预热 之后才能交易。
+    # 所以按"能交易的天数"算，不按"有数据的天数"算：只按有数据算时，留下来的币可能在训练段里一笔都没做、到样本外才加入，
+    # 训练段和样本外用的就不是同一批币了。
+    min_train = max(0, int(a.min_train_days))
+    min_train_note = ""
+    if min_train > (T0 - S).days:
+        min_train_note = (
+            f"训练段只有 {(T0 - S).days} 天，比 --min-train-days {min_train} 天还短，"
+            f"改成要求整个训练段都有数据（{(T0 - S).days} 天）"
+        )
+        min_train = (T0 - S).days
+    kept = []
+    for pair, v in alive.items():
+        p_trade = max(S, _ceil_day(v["first"]) + timedelta(days=w_train))
+        hist = (T0 - p_trade).days
+        if hist < min_train:
+            dropped[pair] = (
+                f"上线太晚：样本外开始（{T0}）前能交易的时间不到 {min_train} 天（第一根K线之后还要等 {w_train} 天预热才能交易）"
+            )
+            dropped_detail[pair] = f"{v['first'].date()} 起，能交易 {max(hist, 0)} 天"
+        else:
+            kept.append(pair)
+    if not kept:
+        print(
+            f"错误：没有一个交易对在样本外开始（{T0}）前有 {min_train} 天以上能交易的历史（第一根K线 + {w_train} 天预热之后）"
+            "（可以用 RESEARCH_MIN_TRAIN_DAYS 调小这个要求，或者用更长的数据）。",
+            file=sys.stderr,
+        )
+        return 1
+    # 每个币的第一根K线（各周期取最晚的那个；去掉的币也记下来，plan.json 里看得到）
+    pair_first = {p: _iso(v["first"].date()) for p, v in scans.items()}
+
     folds: list[dict[str, Any]] = []
     k_req = max(0, a.folds)
-    fold_len = int(total * a.wf_oos_fraction // k_req) if k_req else 0
     wf_note = ""
-    if k_req and fold_len < 20:
-        wf_note = f"数据太短（每折测试窗口只有 {fold_len} 天），不做走步验证"
-        k_req = 0
-    train_len = round(a.wf_train_ratio * fold_len)
+    if a.wf_test_days > 0:
+        # 固定窗口（第 3 轮默认）：每折测试 wf_test_days 天，前面训练 wf_train_days 天，从数据末尾往前排
+        fold_len = int(a.wf_test_days)
+        train_len = int(a.wf_train_days) if a.wf_train_days > 0 else round(a.wf_train_ratio * fold_len)
+        k_fit = max(0, (total - train_len) // fold_len) if fold_len > 0 else 0
+        if k_req and k_fit < k_req:
+            if k_fit >= 1:
+                wf_note = (
+                    f"数据只放得下 {k_fit} 折（每折测试 {fold_len} 天，第一折前面还要留 {train_len} 天训练窗口），"
+                    f"要求的 {k_req} 折减成 {k_fit} 折"
+                )
+            else:
+                wf_note = f"数据太短：一共 {total} 天，放不下 1 折（训练 {train_len} 天 + 测试 {fold_len} 天）"
+            k_req = k_fit
+    else:
+        # 自动（第 2 轮的做法）：最近 wf_oos_fraction 的时间平分成 K 折，训练窗口 = 测试窗口 × wf_train_ratio
+        fold_len = int(total * a.wf_oos_fraction // k_req) if k_req else 0
+        if k_req and fold_len < 20:
+            wf_note = f"数据太短（每折测试窗口只有 {fold_len} 天），不做走步验证"
+            k_req = 0
+        train_len = int(a.wf_train_days) if a.wf_train_days > 0 else round(a.wf_train_ratio * fold_len)
     if k_req:
         W0 = E - timedelta(days=k_req * fold_len)
         for k in range(1, k_req + 1):
@@ -395,12 +512,15 @@ def cmd_prepare(a: argparse.Namespace) -> int:
             folds.append({"k": k, "train": (tr_s, ts - timedelta(days=1)), "test": (ts, te)})
 
     # ---- 每个策略的预热 / 走步可行性 ----
+    # freqtrade 从 --timerange 开始日期往前多加载 startup_candle_count 根K线；最早的数据（所有保留的币里最早的那根，
+    # 可能比研究开始日期 S 还早，那是下载时为预热多下的）晚于"开始日期 - 预热"时，它把回测开始时间往后推到 最早数据 + 预热。
+    kept_first = _ceil_day(min(scans[p]["first"] for p in kept))
     for n in found:
         info = strategies[n]
         tf_sec = cd._tf_seconds(info["timeframe"]) if info["timeframe"] else 0
         warm = math.ceil(info["startup"] * tf_sec / 86400) if tf_sec else 0
         info["warmup_days"] = warm
-        eff0 = S + timedelta(days=warm)
+        eff0 = kept_first + timedelta(days=warm)
         info["train_effective_start"] = _iso(max(eff0, train[0]))
         info["train_effective_days"] = max(0, (train[1] - max(eff0, train[0])).days + 1)
         ok = []
@@ -414,12 +534,17 @@ def cmd_prepare(a: argparse.Namespace) -> int:
     # freqtrade 每次回测只在 --timerange 开始前多加载 startup_candle_count 根K线算指标。
     # EMA200 这类递推指标 300 根时还带着约 37% 的"起点误差"（talib 的 EMA 从前 200 根的简单平均起步，
     # 之后只递推了 100 次：(1 - 2/201)^100 ≈ 0.37），各段结果会随切分点变化，和连续回测、实盘都对不上。
-    # 所以：每一段开始前有多少历史就多给多少，最多 warmup_candles 根（默认 600，残留约 2%，
-    # 也差不多是 OKX 实盘 freqtrade 内存里保留的K线数：startup + 300）。数据开头那一段只能用策略自己的预热长度。
+    # 所以：从中间开始的段（样本外、走步各折），开始前有多少历史就多给多少，最多 warmup_candles 根（默认 600，残留约 2%，
+    # 也差不多是 OKX 实盘 freqtrade 内存里保留的K线数：startup + 300）。"有多少历史"从最早的数据算起。
+    # 从数据开头开始的段（训练段、"没看过的一段"）只给策略自己的预热长度：freqtrade 按根数裁掉每个币自己开头的预热K线，
+    # 给 600 根时，研究开始前历史不到 600 天的币（例如 2020 年才上线的币）要在训练段里闲置到 第一根K线 + 600 天，
+    # 2021 年的牛市就只剩几个币能交易了（第 3 轮复查发现）。训练段是第一段，不存在"和前一段对不上"的问题。
     # 实现：给这一段的 freqtrade 命令多加一个 --config warmup/<策略>__<段>.json，里面只有 startup_candle_count。
     warm_dir = run_dir / "warmup"
     warm_dir.mkdir(parents=True, exist_ok=True)
     seg_starts: dict[str, date] = {"train": train[0], "test": test[0]}
+    if holdout is not None:
+        seg_starts["holdout"] = holdout[0]
     for f in folds:
         seg_starts[f"wf{f['k']}"] = f["test"][0]
         seg_starts[f"wf{f['k']}train"] = f["train"][0]
@@ -431,8 +556,11 @@ def cmd_prepare(a: argparse.Namespace) -> int:
         want = max(startup, want_base)
         wc: dict[str, int] = {}
         for label, d0 in seg_starts.items():
-            avail = int((d0 - S).days * 86400 // tf_sec) if tf_sec > 0 else 0
-            nwarm = max(startup, min(want, avail))
+            if d0 <= S:
+                nwarm = startup  # 从数据开头开始的段：只用策略自己的预热（见上面）
+            else:
+                avail = int((d0 - kept_first).days * 86400 // tf_sec) if tf_sec > 0 else 0
+                nwarm = max(startup, min(want, avail))
             wc[label] = nwarm
             frag = warm_dir / f"{n}__{label}.json"
             if nwarm > startup:
@@ -473,54 +601,141 @@ def cmd_prepare(a: argparse.Namespace) -> int:
     def rng(t: tuple[date, date]) -> str:
         return f"{_iso(t[0])} ~ {_iso(t[1])}"
 
+    settings = json.loads(a.settings) if a.settings else {}
+    hyperopt_on = settings.get("hyperopt") in (1, "1", True)
     out(f"数据检查（数据目录 {datadir}，需要的周期：{' '.join(req_tfs_sorted)}）")
     out(f"  配置里的交易对 {len(whitelist)} 个：保留 {len(kept)} 个，去掉 {len(dropped)} 个。")
     if dropped:
-        out("  去掉的币（历史数据不够，硬留着会让区间变短或结果失真）：")
+        out("  去掉的币（数据不够，硬留着会让结果失真）：")
         by_reason: dict[str, list[str]] = {}
         for pair, why in dropped.items():
-            # "没有 1h 数据" 这类原因相同的合并成一行；带日期的原因每个币不一样，各占一行
-            by_reason.setdefault(why, []).append(pair.split("/")[0])
+            # 原因相同的合并成一行；每个币自己的日期写在币名后面
+            coin = pair.split("/")[0] + (f"({dropped_detail[pair]})" if pair in dropped_detail else "")
+            by_reason.setdefault(why, []).append(coin)
         for why, coins in by_reason.items():
             out(f"    - {why}（{len(coins)} 个）：{' '.join(coins)}")
+    if min_train_note:
+        out(f"  注意：{min_train_note}")
     if "BTC/USDT:USDT" in whitelist and "BTC/USDT:USDT" not in kept:
         out("  !! 注意：BTC 被去掉了。用 BTC 判断大盘的策略（BigTrendBoth、DonchianTrend 等）会出问题，先补齐 BTC 的数据。")
+    elif "BTC/USDT:USDT" in kept and scans["BTC/USDT:USDT"]["first"].date() > S:
+        out(
+            f"  !! 注意：BTC 的数据 {scans['BTC/USDT:USDT']['first'].date()} 才开始，比研究开始（{S}）晚；"
+            "用 BTC 判断大盘的策略在那之前不会开仓。"
+        )
+
+    # ---- 每个币从哪天开始"能交易"：看清楚每一段时间里到底有几个币（覆盖情况 / 幸存者偏差）----
+    # freqtrade 回测按"根数"裁掉每个币自己开头的预热K线（freqtrade.data.converter.trim_dataframe，每个币各自裁）：
+    # 一段回测里，一个币从 max(这一段开始, 第一根K线 + 这一段的预热) 起才能交易。数据完整的币裁掉的正好是这一段开始之前那截；
+    # 上线晚的币裁掉的是它上线后的头几百根。按预热最长的策略算（预热短的策略早一点）。
+    def seg_warm(label: str) -> int:
+        return max((warm_days_of(strategies[n], strategies[n]["warmup_candles"][label]) for n in found), default=0)
+
+    def trade_from(pair: str, label: str, d0: date) -> date:
+        return max(d0, _ceil_day(scans[pair]["first"]) + timedelta(days=seg_warm(label)))
+
+    seg_list: list[tuple[str, date]] = [("train", train[0])]
+    if holdout is not None:
+        seg_list.append(("holdout", holdout[0]))
+    seg_list.append(("test", test[0]))
+    seg_list += [(f"wf{f['k']}", f["test"][0]) for f in folds]
+    tradable = {label: {p: trade_from(p, label, d0) for p in kept} for label, d0 in seg_list}
+
+    out("")
+    out(
+        f"每个币在训练段里从哪天开始能交易（保留的 {len(kept)} 个；= 第一根K线 + 训练段预热 {seg_warm('train')} 天，"
+        f"不早于训练段开始 {S}；按预热最长的策略算，第一根K线的日期在 plan.json 的 pairs_first）："
+    )
+    groups: dict[str, list[str]] = {}
+    for p in sorted(kept, key=lambda x: (tradable["train"][x], x)):
+        d0 = tradable["train"][p]
+        coin = p.split("/")[0]
+        if d0 <= S:
+            groups.setdefault(f"训练段开始（{S}）就能交易", []).append(coin)
+        else:
+            groups.setdefault(f"{d0.year} 年才开始能交易", []).append(f"{coin}({d0.strftime('%m-%d')})")
+    for key, coins in groups.items():
+        out(f"  {key}（{len(coins)} 个）：{' '.join(coins)}")
+    marks = sorted({S, T0, *(date(y, 1, 1) for y in range(S.year + 1, E.year + 1))})
+    cov = []
+    for d0 in marks:
+        n_have = sum(1 for p in kept if scans[p]["first"].date() <= d0)
+        label = "train" if d0 < T0 else "test"
+        n_trade = sum(1 for p in kept if tradable[label][p] <= d0)
+        tag = "训练段开始 " if d0 == S else ("样本外开始 " if d0 == T0 else "")
+        cov.append(f"{tag}{d0} {n_trade}/{n_have}")
+    out("  每个时间点 能交易/有数据 的币：" + " → ".join(cov))
+    out(f"  （{S} 能交易的币 {sum(1 for p in kept if tradable['train'][p] <= S)} 个；"
+        "样本外开始之前按训练段的回测算，之后按样本外的回测算）")
+    out("  每一段第一天就能交易的币（上线晚的币要等 第一根K线 + 这一段的预热 之后才开始交易；"
+        "训练段只用策略自己的预热，其他段最多 " + str(want_base) + " 根）：")
+    for label, d0 in seg_list:
+        n_ok = sum(1 for p in kept if tradable[label][p] <= d0)
+        late = sorted((p for p in kept if tradable[label][p] > d0), key=lambda x: (tradable[label][x], x))
+        txt = f"    {_seg_label(label)}（{d0} 起，预热 {seg_warm(label)} 天）：{n_ok}/{len(kept)} 个"
+        if late and label not in ("train", "holdout"):  # 这两段和上面"训练段里从哪天开始能交易"相同
+            shown = " ".join(f"{p.split('/')[0]}({tradable[label][p]})" for p in late[:12])
+            txt += f"；晚开始的：{shown}" + (f" 等 {len(late)} 个" if len(late) > 12 else "")
+        out(txt)
+    test_late = [p for p in kept if tradable["test"][p] > T0]
+    if test_late:
+        out(f"  !! 样本外有 {len(test_late)} 个币不是第一天就能交易（上面列出了从哪天开始）：训练段和样本外用的币不完全一样，")
+        out("     比较两段结果时记得这一点；想让两段完全一样，调大 RESEARCH_MIN_TRAIN_DAYS。")
+    out("  实盘里上线晚的币只要等策略自己的预热（日线 130 ~ 300 天）；研究里样本外和走步各段给的预热更长，所以晚开始得更多。")
+    out("  !! 幸存者偏差：交易对是今天挑的\"现在还在交易的大币\"，这几年里下架或归零的币（例如 2022 年崩盘的 LUNA、FTT）")
+    out("     根本不在列表里。历史越长，这个偏差越大，结果偏乐观。")
+
     out("")
     out("区间切分（UTC，按天）：")
-    out(f"  全部数据  {rng((S, E))}（{total} 天）")
-    out(f"  训练段    {rng(train)}（{(train[1] - train[0]).days + 1} 天，调参只用这一段）")
-    out(f"  样本外    {rng(test)}（{(test[1] - test[0]).days + 1} 天，最后约 {a.test_fraction:.0%}；训练段调出的参数从没见过这段）")
-    settings = json.loads(a.settings) if a.settings else {}
-    if folds and settings.get("hyperopt") in (1, "1", True) and any(f["train"][1] >= test[0] for f in folds):
+    pre_days = (S - kept_first).days
+    out(
+        f"  全部数据  {rng((S, E))}（{total} 天）"
+        + (f"；{S} 之前还有约 {pre_days} 天K线：不交易，只用来给指标预热" if pre_days > 0 else "")
+    )
+    out(f"  训练段    {rng(train)}（{(train[1] - train[0]).days + 1} 天，约前 {1 - a.test_fraction:.0%}；调参时只用这一段）")
+    out(f"  样本外    {rng(test)}（{(test[1] - test[0]).days + 1} 天，最后约 {a.test_fraction:.0%}；调参时没用过这段）")
+    for line in seen_warning(S, T0, E, seen, holdout):
+        out("            " + line)
+    if holdout is not None:
+        out(f"  没看过的一段 {rng(holdout)}（{(holdout[1] - holdout[0]).days + 1} 天，训练段的前一部分）：每个策略用默认参数单独回测一次，"
+            "报告里单独一张表；它也要赚钱、回撤达标才算通过")
+    if folds and hyperopt_on and any(f["train"][1] >= test[0] for f in folds):
         late = "、".join(str(f["k"]) for f in folds if f["train"][1] >= test[0])
         out(f"            注意：走步第 {late} 折会用这段时间里的数据重新调参，所以\"优化参数\"那一行的样本外和走步结果不是两份独立证据")
     if folds:
         how = "扩展窗口：每折都从数据开头训练" if a.wf_mode == "anchored" else f"滚动窗口：每折先训练 {train_len} 天"
-        out(f"  走步验证  {len(folds)} 折（{how}，再测试后面 {fold_len} 天）：")
+        out(f"  走步验证  {len(folds)} 折（{how}，再测试后面 {fold_len} 天），覆盖 {rng((folds[0]['test'][0], E))}：")
         for f in folds:
             out(f"    第 {f['k']} 折  训练 {rng(f['train'])}  →  测试 {rng(f['test'])}")
+        if wf_note:
+            out(f"            注意：{wf_note}")
+        if not hyperopt_on:
+            out("            不调参时，走步各折和训练段/样本外是同一段行情，只是切成小段、每段从头开始，")
+            out("            看策略是不是每段行情都赚钱（还是只靠某一段大行情），不是额外的独立证据")
     else:
         out(f"  走步验证  不做{'（' + wf_note + '）' if wf_note else ''}")
     warm_lines = [
-        f"    - {n}（{strategies[n]['timeframe']}）：预热 {strategies[n]['warmup_days']} 天，"
-        f"训练段实际从 {strategies[n]['train_effective_start']} 开始"
+        f"    - {n}（{strategies[n]['timeframe']}）：预热 {strategies[n]['warmup_days']} 天；"
+        f"最早有数据的币从 {strategies[n]['train_effective_start']} 开始交易，上线晚的币要等 第一根K线 + {strategies[n]['warmup_days']} 天"
         + (
             f"；走步第 {'、'.join(str(i + 1) for i, v in enumerate(strategies[n]['wf_ok']) if not v)} 折训练窗口扣掉预热后太短，"
             "这几折不调参、用默认参数"
-            if folds and not all(strategies[n]["wf_ok"])
+            if folds and hyperopt_on and not all(strategies[n]["wf_ok"])
             else ""
         )
         for n in found
         if strategies[n]["warmup_days"] >= 3
     ]
     if warm_lines:
-        out("  指标需要先\"预热\"（例如 EMA200），预热期不交易，freqtrade 会自动把开始时间往后推：")
+        out("  指标需要先\"预热\"（例如 EMA200），预热期不交易（训练段的预热 = 策略自己的预热长度）：")
         for w in warm_lines:
             out(w)
     if want_base > 0:
-        out(f"  每一段回测开始前，最多多加载 {want_base} 根K线算指标（有多少历史就给多少；数据开头那一段只能用策略自己的预热长度）。")
+        out(f"  样本外、走步各折这些从中间开始的段，开始前最多多加载 {want_base} 根K线算指标（有多少历史就给多少；"
+            "最少 = 策略自己的预热长度）。")
         out("    EMA200 这类指标要几百根K线才能\"忘掉\"起点，只给 300 根时各段的信号会随切分点变化，和连续回测、实盘对不上。")
-        out("    离数据开头太近的段给不满（最少 = 策略自己的预热长度）；每段实际用了多少根记在 plan.json 的 warmup_candles 里。")
+        out("    训练段（和\"没看过的一段\"）从数据开头开始，只给策略自己的预热：给多了，研究开始前历史不够长的币会在训练段里闲置更久。")
+        out("    每段实际用了多少根记在 plan.json 的 warmup_candles 里。")
     blocked = [n for n in found if strategies[n].get("hyperopt_block")]
     if blocked:
         out("")
@@ -551,17 +766,25 @@ def cmd_prepare(a: argparse.Namespace) -> int:
         "dataformat": fmt,
         "timeframes": req_tfs_sorted,
         "pairs": kept,
-        "pairs_dropped": dropped,
+        "pairs_dropped": {p: why + (f"（{dropped_detail[p]}）" if p in dropped_detail else "") for p, why in dropped.items()},
         "pairs_config_count": len(whitelist),
+        "pairs_first": pair_first,
+        "data_first": _iso(kept_first),
+        "min_train_days": min_train,
         "data_range": [_iso(S), _iso(E)],
         "train": [_iso(train[0]), _iso(train[1])],
         "test": [_iso(test[0]), _iso(test[1])],
+        # 以前的研究（第 2 轮）看过的数据从哪天开始；holdout = 第 3 轮真正没看过的一段（训练段的前一部分，只用默认参数回测）
+        "seen_from": _iso(seen) if seen is not None else None,
+        "holdout": [_iso(holdout[0]), _iso(holdout[1])] if holdout is not None else None,
+        "seen_warning": seen_warning(S, T0, E, seen, holdout),
         "test_fraction": a.test_fraction,
         "wf": {
             "mode": a.wf_mode,
             "train_days": train_len,
             "test_days": fold_len,
             "note": wf_note,
+            "requested_folds": max(0, a.folds),
             "folds": [
                 {"k": f["k"], "train": [_iso(f["train"][0]), _iso(f["train"][1])],
                  "test": [_iso(f["test"][0]), _iso(f["test"][1])]}
@@ -583,6 +806,7 @@ def cmd_prepare(a: argparse.Namespace) -> int:
         f"DATA_END={_iso(E)}",
         f"TRAIN_RANGE={_tr(*train)}",
         f"TEST_RANGE={_tr(*test)}",
+        f"HOLDOUT_RANGE={_tr(*holdout) if holdout is not None else ''}",
         f"WF_COUNT={len(folds)}",
         f"PAIR_COUNT={len(kept)}",
         f"PLAN_DATADIR={shlex.quote(str(datadir))}",
@@ -661,7 +885,7 @@ def evaluate_dir(plan: dict[str, Any], strategy: str, result_dir: str) -> dict[s
     cfg = cd.load_result_config(f)
     s = plan.get("settings", {})
     r = cd.evaluate(
-        strategy, st, f, float(s.get("max_dd", 8.0)), float(s.get("max_leverage", 5.0)),
+        strategy, st, f, cd.settings_max_dd_pct(s), float(s.get("max_leverage", 5.0)),
         int(s.get("min_trades", 30)), cfg, Path(plan["datadir"]),
     )
     r["profit_factor"] = _profit_factor([float(t.get("profit_abs") or 0.0) for t in (st.get("trades") or [])])
@@ -848,8 +1072,8 @@ def funding_estimate(plan: dict[str, Any], r: dict[str, Any] | None) -> dict[str
 # ----------------------------------------------------------------------------
 # 判定
 # ----------------------------------------------------------------------------
-def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool) -> None:
-    max_dd = float(s.get("max_dd", 8.0)) / 100
+def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool, holdout_enabled: bool = False) -> None:
+    max_dd = cd.settings_max_dd_pct(s) / 100
     max_lev = float(s.get("max_leverage", 5.0))
     min_pf = float(s.get("min_pf", 1.2))
     min_trades = int(s.get("min_trades", 30))
@@ -872,6 +1096,18 @@ def judge(row: dict[str, Any], s: dict[str, Any], wf_enabled: bool) -> None:
             reasons.append(f"样本外只有 {te['trades']} 笔交易（< {min_trades}）")
         if te.get("leverage_max") is not None and te["leverage_max"] > max_lev + 1e-9:
             reasons.append(f"杠杆 {te['leverage_max']:g}x 超过 {max_lev:g}x")
+    # 没看过的一段（第 3 轮唯一没被以前的研究看过的数据）：只对默认参数那一行判（优化参数是在包含它的训练段上调的）
+    if holdout_enabled and row.get("variant") == "default":
+        ho = row.get("holdout")
+        if ho is None:
+            reasons.append("没看过的一段回测失败或没有结果")
+        elif ho["trades"] == 0:
+            reasons.append("没看过的一段一笔交易都没有")
+        else:
+            if ho["profit_total"] <= 0:
+                reasons.append(f"没看过的一段（{ho['start']}~{ho['end']}）亏损 {_pct(ho['profit_total'], True)}")
+            if ho["dd_worst"] > max_dd:
+                reasons.append(f"没看过的一段回撤 {_pct(ho['dd_worst'])} 超过 {max_dd * 100:g}%")
     if tr is None:
         reasons.append("训练段回测失败或没有结果")
     else:
@@ -930,11 +1166,128 @@ def _fmt_params(p: dict[str, Any]) -> str:
     return "、".join(f"{k}={v}" for k, v in p.items()) if p else "-"
 
 
+_MIN_STAKE_PAIR_RE = re.compile(r"([A-Z0-9]+/[A-Z0-9]+(?::[A-Z0-9]+)?)")
+_LOG_RECORD_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+
+def min_stake_counts(log_path: str | None) -> dict[str, Any]:
+    """数回测日志里截面策略记的"最小下单额"标记（XSMomentum.custom_stake_amount 记的，同一个币同一根K线只记一次）。
+
+    freqtrade 会把太长的日志行折成几行（中文按字折，标记本身也可能被折开），所以按"一条日志"（以时间开头的那行 + 后面的续行）
+    拼起来再找标记；币名在这条日志的第一行里。
+    返回 {"skip": 开不出来的次数, "bump": 被 freqtrade 放大的次数, "skip_pairs": {币: 次数}}。日志读不到 = 全是 0。
+    """
+    out: dict[str, Any] = {"skip": 0, "bump": 0, "skip_pairs": {}}
+    if not log_path:
+        return out
+    try:
+        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    if "最小下单额" not in text:
+        return out
+    records: list[list[str]] = []
+    for line in text.splitlines():
+        if _LOG_RECORD_START.match(line) or not records:
+            records.append([line])
+        else:
+            records[-1].append(line)
+    for rec in records:
+        joined = "".join(rec)
+        if MIN_STAKE_SKIP_TAG in joined:
+            out["skip"] += 1
+            head = rec[0].split(" - ", 3)[-1]  # 去掉 "时间 - 模块 - 级别 - " 前缀
+            m = _MIN_STAKE_PAIR_RE.search(head)
+            if m:
+                coin = m.group(1).split("/")[0]
+                out["skip_pairs"][coin] = out["skip_pairs"].get(coin, 0) + 1
+        elif MIN_STAKE_BUMP_TAG in joined:
+            out["bump"] += 1
+    return out
+
+
+def _trade_key(t: dict[str, Any]) -> tuple[str, str]:
+    return str(t.get("pair")), str(t.get("open_date") or t.get("open_timestamp"))
+
+
+def compare_lowrisk(low: dict[str, Any] | None, base: dict[str, Any] | None) -> dict[str, Any] | None:
+    """低风险版 vs 原版（信号相同、只有仓位不同），逐笔对比同一段回测的交易。
+
+    返回：原版有、低风险版没开出来的（多半是仓位太小凑不够最小下单量）；低风险版多出来的；
+    共同的交易里保证金之比（应该约 0.5）、和原版一样大的笔数（合约张数取整后都是最少的那一档，风险没减半）。
+    """
+    if not low or not base:
+        return None
+    lt = {_trade_key(t): t for t in (low["_st"].get("trades") or [])}
+    bt = {_trade_key(t): t for t in (base["_st"].get("trades") or [])}
+    missing = [bt[k] for k in bt if k not in lt]
+    extra = [k for k in lt if k not in bt]
+    ratios: list[float] = []
+    same = 0
+    for k in bt:
+        if k not in lt:
+            continue
+        b_st, l_st = float(bt[k].get("stake_amount") or 0.0), float(lt[k].get("stake_amount") or 0.0)
+        b_am, l_am = float(bt[k].get("amount") or 0.0), float(lt[k].get("amount") or 0.0)
+        if b_st > 0:
+            ratios.append(l_st / b_st)
+        if b_am > 0 and abs(l_am - b_am) <= 1e-9 * b_am:
+            same += 1
+    ratios.sort()
+    miss_pairs: dict[str, int] = {}
+    for t in missing:
+        coin = str(t.get("pair")).split("/")[0]
+        miss_pairs[coin] = miss_pairs.get(coin, 0) + 1
+    return {
+        "base_trades": len(bt), "low_trades": len(lt), "shared": len(bt) - len(missing),
+        "missing": len(missing), "missing_win": sum(1 for t in missing if float(t.get("profit_abs") or 0.0) > 0),
+        "missing_profit": sum(float(t.get("profit_abs") or 0.0) for t in missing),
+        "missing_pairs": dict(sorted(miss_pairs.items(), key=lambda kv: -kv[1])),
+        "extra": len(extra), "same_size": same,
+        "ratio_min": ratios[0] if ratios else None, "ratio_max": ratios[-1] if ratios else None,
+        "ratio_median": ratios[len(ratios) // 2] if ratios else None,
+    }
+
+
+def _lowrisk_text(seg: str, c: dict[str, Any], base_name: str) -> str:
+    where = _seg_label(seg)
+    txt = f"和 {base_name} 逐笔对比（{where}）：{base_name} {c['base_trades']} 笔"
+    if c["missing"]:
+        coins = "、".join(f"{k} {v}" for k, v in list(c["missing_pairs"].items())[:5])
+        txt += (f"，其中 {c['missing']} 笔这里没开出来（仓位太小、凑不够最小下单量：{coins}；"
+                f"其中 {c['missing_win']} 笔是赚钱的，合计 {c['missing_profit']:+.1f} USDT）")
+    if c["extra"]:
+        txt += f"；这里多出 {c['extra']} 笔"
+    if c["shared"]:
+        txt += f"；共同的 {c['shared']} 笔"
+        if c["same_size"]:
+            txt += f"里 {c['same_size']} 笔仓位和原版一样大（合约张数取整后都是最少的一档，风险没减半）"
+        if c["ratio_median"] is not None:
+            txt += f"，保证金是原版的 {c['ratio_min']:.2f} ~ {c['ratio_max']:.2f} 倍（中位数 {c['ratio_median']:.2f}）"
+    if c["missing"] or c["same_size"] or (c["ratio_median"] is not None and abs(c["ratio_median"] - 0.5) > 0.1):
+        txt += "。\"回撤、收益大约减半\"只在每笔都正常减半时成立，这一段不完全是这样"
+    return txt
+
+
+def _year_returns(r: dict[str, Any] | None) -> dict[int, float]:
+    """每年平仓的盈亏 ÷ 初始资金（按平仓日期分年；不复利，只用来看哪一年赚、哪一年亏）。"""
+    out: dict[int, float] = {}
+    if not r:
+        return out
+    start = float(r.get("starting_balance") or DEFAULT_START_BALANCE)
+    for t in r["_st"].get("trades") or []:
+        cd_ = str(t.get("close_date") or "")[:4]
+        if cd_.isdigit() and start > 0:
+            out[int(cd_)] = out.get(int(cd_), 0.0) + float(t.get("profit_abs") or 0.0) / start
+    return dict(sorted(out.items()))
+
+
 def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
     run_dir = Path(plan["_run_dir"])
     folds = plan["wf"]["folds"]
     s = plan.get("settings", {})
     wf_enabled = bool(folds)
+    holdout_enabled = bool(plan.get("holdout"))
     rows = []
     for strat in plan["strategies_order"]:
         info = plan["strategies"][strat]
@@ -942,6 +1295,7 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
         if _job(jobs, strat, "opt", "test") or _job(jobs, strat, "opt", "train"):
             variants.append("opt")
         default_folds = [eval_job(plan, jobs, strat, "default", f"wf{f['k']}") for f in folds]
+        default_holdout = eval_job(plan, jobs, strat, "default", "holdout") if holdout_enabled else None
         for variant in variants:
             row: dict[str, Any] = {
                 "strategy": strat,
@@ -949,6 +1303,8 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                 "variant": variant,
                 "train": eval_job(plan, jobs, strat, variant, "train"),
                 "test": eval_job(plan, jobs, strat, variant, "test"),
+                # 没看过的一段只用默认参数回测（优化参数是在包含它的训练段上调的，对它不是独立检验）
+                "holdout": default_holdout if variant == "default" else None,
                 "notes": [],
                 "params": {},
                 "fold_params": [],
@@ -983,7 +1339,42 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                 }
             row["folds"] = fold_res
             row["wf"] = stitch_folds(plan, fold_res) if wf_enabled else None
-            judge(row, s, wf_enabled)
+            if variant == "opt" and holdout_enabled:
+                row["notes"].append(
+                    "优化参数是在训练段（包含\"没看过的一段\"）上调出来的，没看过的一段对它不是独立检验；那一段只看默认参数那一行"
+                )
+            # 截面策略：前 K 名的币因为最小下单额开不出来（名额空到下一个调仓日）/ 被放大 的次数（数回测日志里的标记）
+            segs_ms = ["train", "test"] + (["holdout"] if variant == "default" and holdout_enabled else [])
+            segs_ms += [f"wf{f['k']}" for f in folds]
+            ms: dict[str, Any] = {}
+            for seg in segs_ms:
+                j = _job(jobs, strat, variant, seg)
+                if j is None and variant == "opt" and seg.startswith("wf"):
+                    j = _job(jobs, strat, "default", seg)  # 这一折没调参，用的是默认参数
+                if j and j["status"] == "ok":
+                    c = min_stake_counts(j.get("log"))
+                    if c["skip"] or c["bump"]:
+                        ms[seg] = c
+            row["min_stake"] = ms
+            if ms:
+                wf_skip = sum(c["skip"] for k, c in ms.items() if k.startswith("wf"))
+                wf_bump = sum(c["bump"] for k, c in ms.items() if k.startswith("wf"))
+                parts = [f"{_seg_label(k)} {c['skip']} 次" + (f"（另有 {c['bump']} 次被放大）" if c["bump"] else "")
+                         for k, c in ms.items() if not k.startswith("wf")]
+                if wf_skip or wf_bump:
+                    parts.append(f"走步各折合计 {wf_skip} 次" + (f"（另有 {wf_bump} 次被放大）" if wf_bump else ""))
+                coins: dict[str, int] = {}
+                for c in ms.values():
+                    for k, v in c["skip_pairs"].items():
+                        coins[k] = coins.get(k, 0) + v
+                top = "、".join(f"{k} {v}" for k, v in sorted(coins.items(), key=lambda kv: -kv[1])[:6])
+                row["notes"].append(
+                    "最小下单额：排名进了前 K 名、但按风险算的仓位比交易所最小下单额小太多（freqtrade 最多放大 30%）开不出来的次数："
+                    + "；".join(parts) + (f"（按币：{top}）" if top else "")
+                    + "。开不出来的币还占着名额，那个名额空到下一个调仓日，回测结果是\"少开了几笔\"的结果；"
+                    "实盘资金越少越严重（日志里带 " + MIN_STAKE_SKIP_TAG + " 的行）"
+                )
+            judge(row, s, wf_enabled, holdout_enabled)
             if row["verdict"] == "ERROR":
                 # 一个结果都没有：多半是策略代码报错。第一条原因直接指向日志，"没有可调参数"之类的提醒没有意义
                 failed = [j for j in jobs if j["strategy"] == strat and j["variant"] == variant and j["status"] == "fail"]
@@ -1012,6 +1403,18 @@ def build_rows(plan: dict[str, Any], jobs, notes) -> list[dict[str, Any]]:
                         f"样本外收益 {_pct(te['profit_total'], True)} → {_pct(fe['profit_total_est'], True)}"
                     )
             rows.append(row)
+    # 低风险版 vs 原版：逐笔对比，核对"仓位减半"在这份数据（真实的合约张数 / 最小下单量）上是不是真的成立
+    by_default = {r["strategy"]: r for r in rows if r["variant"] == "default"}
+    for low_name, base_name in LOWRISK_OF.items():
+        low, base = by_default.get(low_name), by_default.get(base_name)
+        if not low or not base:
+            continue
+        low["lowrisk_vs"] = {"base": base_name, "segments": {}}
+        for seg in ("train", "holdout", "test"):
+            c = compare_lowrisk(low.get(seg), base.get(seg))
+            if c is not None:
+                low["lowrisk_vs"]["segments"][seg] = c
+                low["notes"].append(_lowrisk_text(seg, c, base_name))
     vr = {"PASS": 0, "FAIL": 1, "ERROR": 2}
     rows.sort(key=lambda r: (vr[r["verdict"]], -((r["test"] or {}).get("profit_total") or -9.0)))
     for i, r in enumerate(rows, 1):
@@ -1044,9 +1447,46 @@ def _epochs_text(ep: dict[str, Any], s: dict[str, Any]) -> str:
     return txt
 
 
+def _holdout_table(plan: dict[str, Any], rows: list[dict[str, Any]]) -> list[str]:
+    """"没看过的一段"（第 3 轮唯一没被以前的研究看过的数据）：每个策略默认参数的结果，外加每年的平仓盈亏。"""
+    ho_ = plan["holdout"]
+    L = ["", f"没看过的一段（{ho_[0]} ~ {ho_[1]}，默认参数）：第 2 轮只用了 {plan.get('seen_from') or '?'} 以后的数据，"
+         "第 3 轮的选择也没看过这段，是这次唯一的独立证据（训练段的一部分，不是额外的数据）："]
+    years = sorted({y for r in rows if r["variant"] == "default" for y in _year_returns(r.get("holdout"))})
+    headers = [("策略", False), ("收益", True), ("盈亏因子", True), ("回撤", True), ("交易", True)]
+    headers += [(f"{y} 年", True) for y in years]
+    headers += [("结论", False)]
+    body = []
+    max_dd = cd.settings_max_dd_pct(plan.get("settings")) / 100
+    for r in rows:
+        if r["variant"] != "default":
+            continue
+        ho = r.get("holdout")
+        if not ho:
+            body.append([r["strategy"], "-", "-", "-", "-"] + ["-"] * len(years) + ["没有结果"])
+            continue
+        yr = _year_returns(ho)
+        ok = ho["trades"] > 0 and ho["profit_total"] > 0 and ho["dd_worst"] <= max_dd
+        body.append([
+            r["strategy"], _pct(ho["profit_total"], True), _num(ho["profit_factor"]), _pct(ho["dd_worst"]), str(ho["trades"]),
+        ] + [_pct(yr.get(y), True) if y in yr else "-" for y in years] + [
+            "赚钱、回撤达标" if ok else ("没有交易" if ho["trades"] == 0 else "亏损或回撤超标"),
+        ])
+    widths = [max(cd._width(h), *(cd._width(row[i]) for row in body)) if body else cd._width(h)
+              for i, (h, _) in enumerate(headers)]
+    sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    L += [sep, "| " + " | ".join(cd._pad(h, widths[i]) for i, (h, _) in enumerate(headers)) + " |", sep]
+    for row in body:
+        L.append("| " + " | ".join(cd._pad(c, widths[i], headers[i][1]) for i, c in enumerate(row)) + " |")
+    L.append(sep)
+    L.append("  （每年 = 那一年平仓的盈亏 ÷ 初始资金，不复利，只用来看哪一年赚、哪一年亏；收益、回撤是整段的。"
+             "\"通过\"要求这一段也赚钱、回撤达标）")
+    return L
+
+
 def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     s = plan.get("settings", {})
-    max_dd = float(s.get("max_dd", 8.0))
+    max_dd = cd.settings_max_dd_pct(s)
     L: list[str] = []
     title = "第 2 步策略研究结果"
     if stage == "interim":
@@ -1064,7 +1504,12 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
         f"去掉 {len(plan['pairs_dropped'])} 个历史不够的）    手续费+滑点：{fee_txt}    初始资金：1000 USDT"
     )
     dr, tr_, te_ = plan["data_range"], plan["train"], plan["test"]
-    L.append(f"数据区间：{dr[0]} ~ {dr[1]}    训练段：{tr_[0]} ~ {tr_[1]}    样本外：{te_[0]} ~ {te_[1]}（训练段调出的参数从没见过这段）")
+    ho_ = plan.get("holdout")
+    L.append(f"数据区间：{dr[0]} ~ {dr[1]}    训练段：{tr_[0]} ~ {tr_[1]}    样本外：{te_[0]} ~ {te_[1]}（调参时没用过这段）")
+    for line in plan.get("seen_warning") or []:
+        L.append("          " + line)
+    if ho_:
+        L.append(f"没看过的一段：{ho_[0]} ~ {ho_[1]}（训练段的前一部分，默认参数单独回测；下面排名表后面单独一张表）")
     wf = plan["wf"]
     late = [f["k"] for f in wf["folds"] if f["train"][1] >= te_[0]]
     if late and s.get("hyperopt") in (1, "1", True):
@@ -1073,9 +1518,13 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
             "所以\"优化参数\"那一行的样本外和走步结果不是两份独立证据（默认参数那一行不受影响）"
         )
     if wf["folds"]:
-        how = "扩展窗口" if wf["mode"] == "anchored" else f"滚动：每折先用前 {wf['train_days']} 天调参"
+        if s.get("hyperopt") in (1, "1", True):
+            how = "扩展窗口" if wf["mode"] == "anchored" else f"滚动：每折先用前 {wf['train_days']} 天调参"
+            how += f"，再测后面 {wf['test_days']} 天"
+        else:
+            how = f"每折测 {wf['test_days']} 天，不调参、直接用默认参数"
         L.append(
-            f"走步验证：{len(wf['folds'])} 折（{how}，再测后面 {wf['test_days']} 天），"
+            f"走步验证：{len(wf['folds'])} 折（{how}），"
             f"覆盖 {wf['folds'][0]['test'][0]} ~ {wf['folds'][-1]['test'][1]}"
         )
     else:
@@ -1113,13 +1562,21 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
             "      \"样本外扣资金费\"列按每 8 小时 0.01%（做多付、做空收）估算了这一部分，只用来提醒、不参与\"通过\"判定。"
             "趋势策略样本外只是小赚的，不能算已经证明能赚钱"
         )
+    override = cd.max_dd_override_note(s)
+    if override:
+        L.append(override)
     L.append(
-        f"通过标准（样本外和走步拼接结果都要满足）：含浮亏回撤 ≤ {max_dd:g}%、总收益 > 0、"
+        f"回撤上限：{max_dd:g}% {cd.max_dd_rule_note(max_dd)}。回撤 = 账户权益（已平仓余额 + 持仓浮动盈亏）"
+        "从最高点到最低点的跌幅，逐根K线；组合检查看的是所有子账户加起来的总权益"
+    )
+    L.append(
+        f"通过标准（样本外和走步拼接结果都要满足）：账户权益回撤（含浮亏）≤ {max_dd:g}%、总收益 > 0、"
         f"盈亏因子 ≥ {float(s.get('min_pf', 1.2)):g}、交易 ≥ {int(s.get('min_trades', 30))} 笔、杠杆 ≤ {float(s.get('max_leverage', 5)):g}x；"
     )
     L.append(
         f"                                          训练段也要赚钱、回撤 ≤ {max_dd:g}%；"
         f"样本外盈亏因子不低于训练段的 {float(s.get('pf_ratio', 0.6)):g} 倍"
+        + (f"；没看过的一段也要赚钱、回撤 ≤ {max_dd:g}%（只看默认参数）" if ho_ else "")
     )
     L.append("")
 
@@ -1155,6 +1612,9 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
         L.append("| " + " | ".join(cd._pad(c, widths[i], headers[i][1]) for i, c in enumerate(row)) + " |")
     L.append(sep)
 
+    if ho_:
+        L.extend(_holdout_table(plan, rows))
+
     L.append("")
     L.append("说明（每一行的细节）：")
     for r in rows:
@@ -1164,6 +1624,10 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
             seg = []
             if tr:
                 seg.append(f"训练 {tr['start']}~{tr['end']}（{tr['trades']} 笔）")
+            ho = r.get("holdout")
+            if ho:
+                seg.append(f"没看过的一段 {ho['start']}~{ho['end']}（{ho['trades']} 笔，收益 {_pct(ho['profit_total'], True)}，"
+                           f"盈亏因子 {_num(ho['profit_factor'])}，回撤 {_pct(ho['dd_worst'])}）")
             if te:
                 seg.append(f"样本外 {te['start']}~{te['end']}（{te['trades']} 笔，胜率 {_pct(te.get('winrate'))}，"
                            f"回撤 平仓 {_pct(te['dd_closed'])} / 含浮亏 {_pct(te['dd_mtm'])} {te['dd_mtm_method']}）")
@@ -1220,7 +1684,12 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     elif best:
         L.append("组合检查：只有 1 个策略通过，不需要组合检查。")
     else:
-        L.append("组合检查：没有策略通过，没有做。")
+        L.append("组合检查（同一个账户叠加）：没有策略通过，没有做；下面的子账户组合检查不要求单个策略先通过。")
+
+    # ---- 子账户组合检查（第 3 轮）：每个策略一个子账户、资金分开，看合起来的总权益 ----
+    # 算法、挑选规则、输出（portfolio.txt/csv/json）全在 scripts/research_portfolio.py；出错只影响这一节
+    L.append("")
+    L.extend(research_portfolio.report_lines(plan, rows))
 
     passed = sum(1 for r in rows if r["verdict"] == "PASS")
     L.append("")
@@ -1231,8 +1700,14 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str) -> str:
     L.append("  - 回撤 = 账户权益（余额 + 持仓浮动盈亏）从最高点到最低点的跌幅，逐根K线计算，取\"平仓\"和\"含浮亏\"两种口径中较大的，")
     L.append("    和 make check 口径相同。PF = 盈亏因子 = 总盈利 ÷ 总亏损。")
     L.append("  - 走步收益 = 各折测试结果按时间顺序复利拼接；走步回撤 = 拼接后整条资金曲线的最大回撤。")
-    L.append("    优化参数那一行的走步：每一折都只用这一折自己的训练窗口重新调参，再去测后面没见过的那段。")
+    if any(r["variant"] == "opt" for r in rows):
+        L.append("    优化参数那一行的走步：每一折都只用这一折自己的训练窗口重新调参，再去测后面没见过的那段。")
+    else:
+        L.append("    这次没有调参：走步各折和训练段/样本外是同一段行情切成小段，看的是\"是不是每段都赚钱\"，不是额外的独立证据。")
     L.append("  - 样本外扣资金费 = 样本外收益 + 按每 8 小时 0.01% 估算的、没有资金费数据那段持仓的资金费（做多付、做空收；只是估算，不参与判定）。")
+    if plan.get("seen_warning"):
+        L.append("  - 样本外这段以前的研究已经看过（见开头），第 3 轮的选择是看着它定的：样本外\"通过\"不等于有了独立证据，"
+                 + ("以\"没看过的一段\"为准。" if ho_ else "这次没有没看过的数据。"))
     L.append("  - 交易对是站在今天挑的\"还活着的大币\"，有幸存者偏差，结果偏乐观；不要为了让表格变好看反复改参数、重跑。")
     if plan.get("synthetic"):
         L.append("  - 再说一次：这是合成数据，数字没有意义。")
@@ -1244,6 +1719,7 @@ CSV_FIELDS = [
     "train_start", "train_end", "train_trades", "train_profit", "train_pf", "train_dd",
     "test_start", "test_end", "test_trades", "test_winrate", "test_profit", "test_profit_funding_est", "test_pf",
     "test_dd_closed", "test_dd_mtm", "test_dd", "test_leverage_max",
+    "holdout_start", "holdout_end", "holdout_trades", "holdout_profit", "holdout_pf", "holdout_dd",
     "wf_trades", "wf_profit", "wf_pf", "wf_dd", "wf_fold_returns",
     "params", "reasons", "notes",
 ]
@@ -1251,6 +1727,7 @@ CSV_FIELDS = [
 
 def _csv_row(r: dict[str, Any]) -> dict[str, Any]:
     tr, te, w = r["train"] or {}, r["test"] or {}, r["wf"] or {}
+    ho = r.get("holdout") or {}
 
     def f(v: Any) -> Any:
         return "inf" if isinstance(v, float) and math.isinf(v) else v
@@ -1265,6 +1742,8 @@ def _csv_row(r: dict[str, Any]) -> dict[str, Any]:
         "test_profit_funding_est": (r.get("funding") or {}).get("profit_total_est"), "test_pf": f(te.get("profit_factor")),
         "test_dd_closed": te.get("dd_closed"), "test_dd_mtm": te.get("dd_mtm"), "test_dd": te.get("dd_worst"),
         "test_leverage_max": te.get("leverage_max"),
+        "holdout_start": ho.get("start"), "holdout_end": ho.get("end"), "holdout_trades": ho.get("trades"),
+        "holdout_profit": ho.get("profit_total"), "holdout_pf": f(ho.get("profit_factor")), "holdout_dd": ho.get("dd_worst"),
         "wf_trades": w.get("trades"), "wf_profit": w.get("profit_total"), "wf_pf": f(w.get("profit_factor")),
         "wf_dd": w.get("dd_worst"),
         "wf_fold_returns": " ".join("" if x is None else f"{x:.4f}" for x in w.get("fold_returns") or []),
@@ -1287,6 +1766,7 @@ def cmd_report(a: argparse.Namespace) -> int:
     run_dir = Path(a.run_dir)
     plan = load_plan(run_dir)
     plan["_run_dir"] = str(run_dir)
+    cd.override_settings_max_dd(plan.setdefault("settings", {}), a.max_dd)
     jobs = load_jobs(run_dir)
     if not any(j["status"] == "ok" for j in jobs):
         print("没有任何成功的回测结果，无法生成报告（看 logs/ 目录里的日志）。")
@@ -1474,16 +1954,24 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("timeframes")
     common_strat(sp)
+    # --print download-start：不列周期，改为打印"下载从哪天开始"（研究开始日期 - 最长的指标预热），给 research.sh 下载用
+    sp.add_argument("--print", choices=["timeframes", "download-start"], default="timeframes")
+    sp.add_argument("--start", default="20210101")
+    sp.add_argument("--warmup-candles", type=int, default=600)
 
     sp = sub.add_parser("prepare")
     common_strat(sp)
     sp.add_argument("--config", required=True)
     sp.add_argument("--run-dir", required=True)
     sp.add_argument("--datadir", default="")
-    sp.add_argument("--start", default="20240101")
-    sp.add_argument("--max-start-gap-days", type=int, default=30)
+    sp.add_argument("--start", default="20210101")
+    sp.add_argument("--min-train-days", type=int, default=365,
+                    help="上线晚的币：样本外开始前至少要有这么多天数据才保留（不够的去掉）")
     sp.add_argument("--test-fraction", type=float, default=1 / 3)
-    sp.add_argument("--folds", type=int, default=4)
+    sp.add_argument("--folds", type=int, default=6)
+    sp.add_argument("--wf-train-days", type=int, default=365, help="走步每折训练窗口天数（0 = 测试窗口 × --wf-train-ratio）")
+    sp.add_argument("--wf-test-days", type=int, default=180,
+                    help="走步每折测试窗口天数（0 = 自动：最近 --wf-oos-fraction 的时间平分成 K 折）")
     sp.add_argument("--wf-train-ratio", type=float, default=2.0)
     sp.add_argument("--wf-oos-fraction", type=float, default=0.5)
     sp.add_argument("--wf-mode", choices=["rolling", "anchored"], default="rolling")
@@ -1491,6 +1979,9 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--warmup-candles", type=int, default=600,
                     help="每段回测开始前最多多加载多少根K线预热指标（不少于策略自己的 startup_candle_count）")
     sp.add_argument("--settings", default="", help="JSON：研究参数（写进 plan.json，报告用）")
+    sp.add_argument("--seen-from", default="",
+                    help="以前的研究已经看过的数据从哪天开始（YYYYMMDD；空 = 不检查）。"
+                         "样本外落在这段里时报告会提醒；这天之前的训练段单独回测一次（没看过的一段）")
 
     sp = sub.add_parser("gate")
     sp.add_argument("--run-dir", required=True)
@@ -1509,6 +2000,8 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("report")
     sp.add_argument("--run-dir", required=True)
     sp.add_argument("--stage", choices=["final", "interim", "interrupted"], default="final")
+    sp.add_argument("--max-dd", type=cd.max_dd_arg, default=None,
+                    help="按这个回撤上限（%%）重新判定（默认 = plan.json 里记的值；不重跑回测、不改 plan.json）")
 
     a = p.parse_args(argv)
     return {

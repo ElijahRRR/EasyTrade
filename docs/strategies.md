@@ -5,6 +5,9 @@
 > 三个正式策略 **BigTrendShort / VolumeSpikeShort / DailyThreeSoldiersShort** 都是从 Rust 项目
 > `crypto-signal-engine` 移植过来的。在 2026-06 的"90 天体检"里，这三个是仅有的、做空方向有统计优势（edge）的策略。
 > 入场条件、阈值、评分、冷却、多周期过滤都按 Rust 源码逐条照搬，每一处对应关系都在代码注释里写了 Rust 文件名。
+>
+> **2026-11-07**：账户回撤上限（含浮亏）从 8% 放宽到 **15%**（杠杆上限 5 倍不变），见 README「风控硬规则」。
+> 这三个移植策略自己的仓位（每笔 1%，`rust_port_common.py`）**没有改**；第 1 轮的结果是按 8% 判的。
 
 ---
 
@@ -28,7 +31,7 @@
    "只有做空有效"里可能有一大部分是跟着大盘跌的 beta，而不是策略本身的本事。行情转涨后，这几个策略可能连续亏损。
    Rust 项目自己的 `edge_filter.rs` 也写明了这条风险，要求"行情转向后重新体检"。
 2. **Rust 的数字和真实账户不是一个口径。** Rust 回测里每个信号都单独开一笔固定 100 USDT，同时开多少笔都可以；
-   真实账户资金有限、名额有限。判断"整体回撤 ≤ 8%"要看 freqtrade 回测结果（第 7 节），不要看 Rust 的数字。
+   真实账户资金有限、名额有限。判断"整体回撤 ≤ 15%"（2026-11-07 起；以前 8%）要看 freqtrade 回测结果（第 7 节），不要看 Rust 的数字。
 3. **现在用的是 OKX 数据。** 币种、成交量、手续费都和币安不同。上实盘前要在币安数据上重新回测（见 README）。
 
 ---
@@ -73,7 +76,7 @@
 账户变成 10000 USDT 时，上面所有数字自动乘 10，不用改代码。
 
 > 可以看到 BigTrendShort 的仓位很小（名义只有总资金的 5% 左右），因为 Rust 原版没有止损，这里只能用很宽的 20% 兜底止损，
-> 按"最多亏 1%"倒推就只能开这么大。想放大收益，可以调高 `risk_per_trade`，但要重新回测、确认整体回撤仍 ≤ 8%（见 1.5）。
+> 按"最多亏 1%"倒推就只能开这么大。想放大收益，可以调高 `risk_per_trade`，但要重新回测、确认整体回撤仍 ≤ 15%（见 1.5）。
 
 ### 1.3 止损
 
@@ -121,18 +124,19 @@
 - 到时间后挂限价单平仓（配置里 exit 订单类型是 limit；回测里按那根 K 线的开盘价成交），离场原因显示为 `rust_timeout`。
 - 没有离场信号（Rust 没有）。
 
-### 1.5 整体最大回撤 8% 怎么控制
+### 1.5 整体最大回撤上限（15%）怎么控制
 
-8% 指的是**整个账户资金曲线**从最高点到最低点的跌幅，不是单笔亏损。判定工具是 `scripts/check_drawdown.py`：
+上限 2026-11-07 起是 **15%**（以前 8%，第 1 轮按 8% 判；临时改用 `MAX_DD_PCT`，例如 `MAX_DD_PCT=12 make backtest`）。
+它指的是**整个账户资金曲线**从最高点到最低点的跌幅，不是单笔亏损。判定工具是 `scripts/check_drawdown.py`：
 它同时看"只算已平仓"和"含浮亏"两种回撤，取较大的一个；`scripts/backtest_all.sh` 跑完会自动调用它。
 
 粗略估算：
 
 - **同一时间最多亏：** `max_open_trades`（默认 4）× 每笔风险 1% ≈ **4%**。
   三个策略都只做空，币和币之间高度相关，一次急涨（逼空）可能让所有空单同时打到止损，所以要按"全部同时亏"来估。
-- **连续亏损：** 8% 大约相当于连续 8 笔满额止损。
+- **连续亏损：** 15% 大约相当于连续 15 笔满额止损（每笔 1%）。
 
-回测回撤超过 8% 时，按这个顺序调整：
+回测回撤超过 15%（或你自己定的更严的上限，例如 12%）时，按这个顺序调整：
 
 1. `risk_per_trade` 从 0.01 降到 0.005（每笔最多亏 0.5%）；
 2. `max_open_trades` 从 4 降到 3 或 2（在配置里改，或回测时加 `--max-open-trades 3`）；
@@ -288,7 +292,7 @@ class BigTrendShortHalfRisk(BigTrendShort):
 | 第 3 阶段：修正跳空成交后 | 每笔仍为 +10.1；加移动止损或保本后降到 +1.5 至 +2.0 |
 
 说明：命中率是"12 根 K 线后顺方向为正的比例"，净收益已扣来回成本 0.14%。
-"每笔 USDT"按每笔 100 USDT 名义计算，+10.1 约等于每笔赚 10%。Rust 的 maxDD 口径和 freqtrade 不同，不能拿来和 8% 比。
+"每笔 USDT"按每笔 100 USDT 名义计算，+10.1 约等于每笔赚 10%。Rust 的 maxDD 口径和 freqtrade 不同，不能拿来和回撤上限（15%）比。
 **注意 beta 风险**（见第 0 节）：409 笔几乎都发生在同一段下跌行情里，彼此高度相关，实际有效样本远少于 409。
 
 **和 Rust 的差别：**
@@ -462,7 +466,7 @@ bash scripts/backtest_all.sh --strategies "DailyThreeSoldiersShort" --timerange 
 bash scripts/backtest_all.sh --strategies "SampleFuturesSanity" --timerange 20250101-
 ```
 
-它不需要通过 8% 检查。
+它不需要通过回撤检查。
 
 ---
 
@@ -492,7 +496,7 @@ bash scripts/backtest_all.sh \
 
 - `--fee 0.0007` = Rust 的手续费 5 个基点 + 滑点 2 个基点，每边计一次；
 - `--max-open-trades 1000` 加 `--enable-position-stacking` 用来模拟 Rust"不限同时持仓、同一币可叠加"；
-- 对照版**不需要**通过 8% 检查，这里看的是胜率、每笔平均收益、pf 和 Rust 是否接近。
+- 对照版**不需要**通过回撤检查，这里看的是胜率、每笔平均收益、pf 和 Rust 是否接近。
 
 仍然对不齐的地方：
 
@@ -518,7 +522,7 @@ bash scripts/download_okx_data.sh --timerange 20250501- --timeframes "5m 1h 4h 1
 bash scripts/download_okx_data.sh --timerange 20250501- --timeframes "1m 3m"
 ```
 
-### 7.2 跑回测和 8% 检查
+### 7.2 跑回测和回撤检查（上限 15%）
 
 ```bash
 # 三个正式策略（建议都加 --fee 0.0007，和 Rust 的成本假设一致，也比 OKX 默认费率保守）
@@ -537,11 +541,11 @@ bash scripts/backtest_all.sh --strategies "BigTrendShort DailyThreeSoldiersShort
 ```
 
 注意：`backtest_all.sh` 不加 `--strategies` 时会把目录里**全部 7 个**策略都跑一遍，包括对照版和冒烟测试，
-它们不通过 8% 检查是正常的。
+它们不通过回撤检查是正常的。
 
 ### 7.3 看结果
 
-- **整体回撤：** 看 `summary.txt` 里的"回撤(平仓)"和"回撤(含浮亏)"，两者都要 ≤ 8%。
+- **整体回撤：** 看 `summary.txt` 里的"回撤(平仓)"和"回撤(含浮亏)"，两者都要 ≤ 15%（2026-11-07 起；以前 8%）。
   freqtrade 输出里的 `Max % of account underwater` 只算已平仓交易；合约模式下它的 "(balance)" 那一行也不含浮亏。
 - **离场原因：** `rust_timeout` = 持满到期；`stop_loss` 和 `trailing_stop_loss` 都是固定止损，合起来看；`force_exit` = 回测结束时强制平仓。
   模拟盘/实盘里还可能看到 `rust_stop_breached` / `rust_stop_invalid` = 止损补救立即平仓（见 1.3）；回测里不会有。

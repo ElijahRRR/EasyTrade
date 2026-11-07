@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-回测结果风控检查：账户整体最大回撤是否 <= 8%（默认），杠杆是否 <= 5 倍。
+回测结果风控检查：账户整体最大回撤（含浮亏）是否 <= 15%（默认 = 项目硬规则），杠杆是否 <= 5 倍。
+
+回撤上限（项目硬规则）：2026-11-07 起是 15%（以前是 8%，第 1、2 轮的结果都是按 8% 判的）。
+  默认值只在本文件的 DEFAULT_MAX_DD_PCT 定义（shell 脚本用 scripts/_common.sh 里同样的值，
+  scripts/check_portfolio_math.py 会核对两边一致）；research_report.py / research_portfolio.py 也从这里取。
+  临时改，不用改代码：环境变量 MAX_DD_PCT=12（所有脚本都认），或者命令行 --max-dd 12（命令行优先）。
 
 用法：
   .venv/bin/python scripts/check_drawdown.py                      # 检查最近一次回测（推荐用 venv 的 python，见下）
   .venv/bin/python scripts/check_drawdown.py user_data/backtest_results/run_20250101_120000
                                                                   # 检查一个批次目录里的全部结果
   .venv/bin/python scripts/check_drawdown.py some-result.zip other.zip     # 检查指定文件
-  .venv/bin/python scripts/check_drawdown.py <目录> --max-dd 8 --max-leverage 5 --min-trades 30
+  .venv/bin/python scripts/check_drawdown.py <目录> --max-dd 15 --max-leverage 5 --min-trades 30
+  MAX_DD_PCT=12 .venv/bin/python scripts/check_drawdown.py <目录>          # 回撤上限改成 12%（留余量）
   .venv/bin/python scripts/check_drawdown.py <目录> --csv summary.csv --json summary.json
   .venv/bin/python scripts/check_drawdown.py <目录> --datadir user_data/data/okx   # 指定K线数据目录
 
@@ -34,6 +40,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import sys
 import unicodedata
 import zipfile
@@ -44,6 +51,87 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_RESULTS_DIR = ROOT_DIR / "user_data" / "backtest_results"
 LAST_RESULT_FILE = ".last_result.json"
+
+
+# ----------------------------------------------------------------------------
+# 硬规则：账户回撤上限（默认值只在这里定义）
+# ----------------------------------------------------------------------------
+# 账户权益（已平仓余额 + 持仓浮动盈亏）从最高点到最低点的最大跌幅上限，单位 %。
+# 2026-11-07 David 把它从 8% 放宽到 15%（杠杆上限 5 倍不变）。
+# 改默认值：改这里，同时改 scripts/_common.sh 的 EASYTRADE_DEFAULT_MAX_DD_PCT（check_portfolio_math.py 核对两边相同）。
+DEFAULT_MAX_DD_PCT = 15.0
+# 第 1、2 轮用的上限：只用来在报告里说明历史（那两轮的结果目录 plan.json 里记的是 8），判定不用它
+LEGACY_MAX_DD_PCT = 8.0
+# 临时改上限的环境变量（shell 脚本、research_report.py、research_portfolio.py 都认）；命令行 --max-dd 优先
+MAX_DD_ENV = "MAX_DD_PCT"
+
+
+def parse_max_dd_pct(value: Any, source: str = "回撤上限") -> float:
+    """把 "15" / "15%" / 15.0 转成百分数 15.0；不是 0 ~ 100 之间的数字就报错（ValueError，中文说明）。"""
+    text = str(value).strip().rstrip("%").strip()
+    try:
+        pct = float(text)
+    except ValueError:
+        raise ValueError(f"{source}要是数字（单位 %，例如 15），收到：{value!r}") from None
+    if not (math.isfinite(pct) and 0 < pct <= 100):
+        raise ValueError(f"{source}要在 0 ~ 100 之间（单位 %，例如 15），收到：{value!r}")
+    return pct
+
+
+def default_max_dd_pct() -> float:
+    """默认回撤上限（%）：环境变量 MAX_DD_PCT 有值就用它，否则 DEFAULT_MAX_DD_PCT（15）。"""
+    raw = os.environ.get(MAX_DD_ENV, "").strip()
+    return parse_max_dd_pct(raw, f"环境变量 {MAX_DD_ENV} ") if raw else DEFAULT_MAX_DD_PCT
+
+
+def settings_max_dd_pct(settings: dict[str, Any] | None) -> float:
+    """研究结果目录（plan.json 的 settings）记下的回撤上限（%）；没记的旧结果用 default_max_dd_pct()。
+
+    研究跑的时候用的上限会写进 plan.json，所以重新生成旧报告时仍按当时的上限判（第 2 轮是 8%），
+    不会因为默认值改了就把历史结果改判。
+    """
+    value = (settings or {}).get("max_dd")
+    if value is None or str(value).strip() == "":
+        return default_max_dd_pct()
+    return parse_max_dd_pct(value, "plan.json 里的 max_dd ")
+
+
+def override_settings_max_dd(settings: dict[str, Any], pct: float | None) -> None:
+    """按别的上限重新判一次已经跑完的研究（research_report.py report / research_portfolio.py 的 --max-dd）。
+
+    只改内存里的 settings（plan.json 不改，下次不加 --max-dd 还是按原来记的值判）；
+    原来记的值存进 max_dd_recorded，报告抬头用 max_dd_override_note() 注明。pct = None 时什么都不做。
+    """
+    if pct is None:
+        return
+    if "max_dd_recorded" not in settings:
+        settings["max_dd_recorded"] = settings.get("max_dd")
+    settings["max_dd"] = pct
+
+
+def max_dd_override_note(settings: dict[str, Any] | None) -> str:
+    """用了 --max-dd 重新判定时，返回一句说明（报告抬头用）；没有重新判定时返回空字符串。"""
+    s = settings or {}
+    if "max_dd_recorded" not in s:
+        return ""
+    rec = s.get("max_dd_recorded")
+    rec_txt = f"{parse_max_dd_pct(rec):g}%" if rec is not None and str(rec).strip() != "" else "没有记（按当时的默认值）"
+    return (
+        f"!! 重新判定：这次研究运行时记下的回撤上限是 {rec_txt}，这里按 --max-dd {settings_max_dd_pct(s):g}% 重新判；"
+        "回测本身没有重跑，plan.json 没有改"
+    )
+
+
+def max_dd_rule_note(max_dd: float) -> str:
+    """一句话说明这次用的回撤上限和项目硬规则（DEFAULT_MAX_DD_PCT）的关系，报告抬头用。"""
+    rule, old = DEFAULT_MAX_DD_PCT, LEGACY_MAX_DD_PCT
+    if abs(max_dd - rule) < 1e-9:
+        return f"= 项目硬规则（2026-11-07 起 {rule:g}%；第 1、2 轮是按 {old:g}% 判的）"
+    if abs(max_dd - old) < 1e-9:
+        return f"= 2026-11-07 以前的旧上限；现在的硬规则是 {rule:g}%"
+    if max_dd < rule:
+        return f"比项目硬规则 {rule:g}% 更严（自己设的，例如留余量）"
+    return f"!! 比项目硬规则 {rule:g}% 宽：这里的\"通过\"不代表符合硬规则"
 
 
 # ----------------------------------------------------------------------------
@@ -466,7 +554,7 @@ def render_table(rows: list[dict[str, Any]], max_dd: float, max_lev: float) -> s
     ]
     sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
     lines = [
-        f"账户整体最大回撤上限：{max_dd:g}%    杠杆上限：{max_lev:g}x",
+        f"账户整体最大回撤上限（含浮亏）：{max_dd:g}% {max_dd_rule_note(max_dd)}    杠杆上限：{max_lev:g}x",
         sep,
         "| " + " | ".join(_pad(h, widths[i]) for i, (h, _) in enumerate(headers)) + " |",
         sep,
@@ -522,12 +610,28 @@ def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
             writer.writerow({k: out.get(k) for k in CSV_FIELDS})
 
 
+def max_dd_arg(text: str) -> float:
+    try:
+        return parse_max_dd_pct(text, "--max-dd ")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def main(argv: list[str] | None = None) -> int:
+    try:
+        dd_default = default_max_dd_pct()
+    except ValueError as exc:
+        print(f"参数错误：{exc}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(
-        description="检查 freqtrade 回测结果的账户整体最大回撤（默认上限 8%）和杠杆（默认上限 5x）。"
+        description=f"检查 freqtrade 回测结果的账户整体最大回撤（含浮亏，默认上限 {dd_default:g}%）和杠杆（默认上限 5x）。"
     )
     parser.add_argument("paths", nargs="*", help="回测结果 .zip/.json 文件或目录；不填 = 最近一次回测")
-    parser.add_argument("--max-dd", type=float, default=8.0, help="最大回撤上限，单位 %%（默认 8）")
+    parser.add_argument(
+        "--max-dd", type=max_dd_arg, default=dd_default,
+        help=f"最大回撤上限，单位 %%（默认 {dd_default:g}：环境变量 {MAX_DD_ENV}，没设时 = 项目硬规则 "
+             f"{DEFAULT_MAX_DD_PCT:g}）",
+    )
     parser.add_argument("--max-leverage", type=float, default=5.0, help="杠杆上限（默认 5）")
     parser.add_argument("--min-trades", type=int, default=30, help="交易数少于此值时给出提醒（默认 30）")
     parser.add_argument("--csv", type=Path, help="另存为 CSV（Excel 可直接打开）")

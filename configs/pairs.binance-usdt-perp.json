@@ -1,7 +1,9 @@
 {
     // 配置片段，不单独使用（被入口配置的 add_config_files 引入）。
-    // 币安 USDT-M 永续合约交易对（StaticPairList 用），与 OKX 回测列表保持一致，
+    // 币安 USDT-M 永续合约交易对（StaticPairList 用），与 OKX 回测列表（pairs.okx-usdt-perp.json，20 个币）保持一致，
     // 这样在币安数据上复核时比较的是同一批币。
+    // 注意：截面动量 XSMomentum 不能用这份 —— 它在第 3 轮研究里是在约 60 个币（pairs.okx-research.json）里排名的，
+    // 20 个币里的"前 3 / 后 3 名"是另一个策略。它用 config.binance-xsmomentum.json（带 pairs.binance-research.json）。
     "exchange": {
         "pair_whitelist": [
             "BTC/USDT:USDT",

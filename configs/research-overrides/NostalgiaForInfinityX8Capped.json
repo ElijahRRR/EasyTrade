@@ -1,0 +1,28 @@
+{
+    // ============================================================
+    // 基准策略 NostalgiaForInfinityX8Capped（= 第三方 NFI X8，杠杆封顶 5 倍，见 user_data/strategies/benchmarks/BenchmarkCaps.py）
+    // 在策略研究里的额外设置（配置片段，不单独使用）。scripts/research.sh 回测它时自动叠加在研究配置后面，只对它生效。
+    //
+    // 来源：NFI 的 README「General Recommendations」、策略文件开头的说明、configs/exampleconfig.json
+    //   （都是 commit 74c03087b8ced3899509ba8d36f5f1565bc5f49a 的版本，当作文本读的）。逐条对照见 docs/benchmarks.md「NFI 要求的设置」。
+    //   * "建议同时 6 ~ 12 个仓位、stake 用 unlimited"：max_open_trades 6（它的 exampleconfig 也是 6）；
+    //     stake_amount = "unlimited" 研究配置里已经是了。
+    //   * "use_exit_signal 必须 true、exit_profit_only 必须 false、ignore_roi_if_entry_signal 必须 true（或者不写）"：
+    //     研究配置本来就没写（= 用策略自己的值，正好是这三个），这里再明确写一遍，防止以后研究配置改了影响它。
+    //   * "不要覆盖 timeframe（必须 5m）"：这里和研究配置都不写 timeframe。
+    //   * unfilledtimeout 照它的 exampleconfig（限价单 3 / 2 分钟没成交就撤）；回测里基本用不到，写上和它的推荐一致。
+    //   没照搬的（为了和我们自己的策略在同一个条件下比）：初始资金仍是 1000 USDT（它的例子是 10000）、
+    //   tradable_balance_ratio 仍是 0.95（它是 0.99）、交易对用研究列表的前 N 个固定币（它推荐 40 ~ 80 个按成交量的动态列表，
+    //   5 分钟 NFI 太吃内存，见 docs/benchmarks.md）、杠杆用它的默认 3 倍（封顶 5 倍）。
+    // ============================================================
+    "max_open_trades": 6,
+    "use_exit_signal": true,
+    "exit_profit_only": false,
+    "ignore_roi_if_entry_signal": true,
+    "unfilledtimeout": {
+        "entry": 3,
+        "exit": 2,
+        "exit_timeout_count": 0,
+        "unit": "minutes"
+    }
+}

@@ -9,7 +9,8 @@
 整条流程跑一遍，确认配置、脚本、策略代码没有报错。
 
 生成的内容（freqtrade 磁盘格式，文件名、列名、K 线类型都按 freqtrade 2026.10 源码确定）：
-  user_data/data/okx-synthetic/futures/<币>_USDT_USDT-<周期>-futures.feather   K 线（5m 15m 1h 4h 1d）
+  user_data/data/okx-synthetic/futures/<币>_USDT_USDT-<周期>-futures.feather   K 线（5m 15m 1h 4h 1d；
+      5m / 15m 默认只有最近 730 天，见 --short-tf-days）
   user_data/data/okx-synthetic/futures/<币>_USDT_USDT-1h-mark.feather          标记价格（只有最近约 92 天）
   user_data/data/okx-synthetic/futures/<币>_USDT_USDT-1h-funding_rate.feather  资金费率（只有最近约 92 天，每 8 小时一条）
   user_data/data/okx-synthetic/synthetic_markets.json   假的交易对规格 + 杠杆档位（给 scripts/ft_offline.py 用）
@@ -28,9 +29,15 @@
     急跌/熊市里更频繁 —— 这样 VolumeSpikeShort / BigTrendShort / DailyThreeSoldiersShort 都会有信号
   * 每个币一段 1 小时的"交易所维护"缺口（测试 freqtrade 补齐缺失 K 线）
   * 价格按 OKX 的最小价格跳动取整，成交量按合约张数取整，成交量单位是"币的数量"（与 freqtrade 一致）
+  * 有几个币"上线晚"（--listings，默认 SOL 2021-06-01、AVAX 2022-09-15、ADA 2024-06-01）：那天之前没有任何数据，
+    用来测试研究脚本对上线晚的币的处理（scripts/research.sh：样本外开始前数据够 365 天的保留，不够的去掉）
+
+默认区间（第 3 轮起）：2020-01-01 ~ 今天，8 个币。研究从 2021-01-01 开始，前面那一年只用来给指标预热，
+和 VPS 上真实数据的情况一样（下载时多下约 600 天给指标预热）。
 
 用法（需要 freqtrade 环境，因为直接用 freqtrade 自己的数据写入代码保证格式正确）：
-  .venv/bin/python scripts/make_synthetic_data.py                 # 默认 6 个币、730 天、截止到今天
+  .venv/bin/python scripts/make_synthetic_data.py                 # 默认 8 个币、2020-01-01 至今（3 个币上线晚）
+  .venv/bin/python scripts/make_synthetic_data.py --days 730 --listings ""   # 第 2 轮的样子：最近 2 年、所有币同一天开始
   .venv/bin/python scripts/make_synthetic_data.py --days 365 --seed 7
   .venv/bin/python scripts/make_synthetic_data.py --futures-history-days 0   # 标记价格/资金费率覆盖全部区间
   然后：make synthetic-test   （或 bash scripts/synthetic_test.sh），见 README「用合成数据自检」
@@ -67,7 +74,15 @@ PAIR_SPECS: dict[str, dict[str, float]] = {
     "XRP": {"p0": 0.55, "tick": 0.0001, "ct": 100.0, "lot": 1.0, "beta": 1.10, "idio": 0.022, "qv": 2.5e6, "lev": 75},
     "DOGE": {"p0": 0.17, "tick": 0.00001, "ct": 1000.0, "lot": 1.0, "beta": 1.50, "idio": 0.025, "qv": 2e6, "lev": 75},
     "LINK": {"p0": 12.0, "tick": 0.001, "ct": 1.0, "lot": 1.0, "beta": 1.30, "idio": 0.020, "qv": 0.8e6, "lev": 50},
+    "ADA": {"p0": 0.45, "tick": 0.0001, "ct": 100.0, "lot": 1.0, "beta": 1.25, "idio": 0.022, "qv": 1.5e6, "lev": 75},
+    "AVAX": {"p0": 30.0, "tick": 0.001, "ct": 1.0, "lot": 1.0, "beta": 1.45, "idio": 0.024, "qv": 1.2e6, "lev": 50},
 }
+DEFAULT_START = "20200101"
+# 上线晚的币（那天之前没有数据）：一个在研究开始后不久、一个在训练段中间（都保留），一个离样本外太近（会被去掉）
+DEFAULT_LISTINGS = "SOL:20210601 AVAX:20220915 ADA:20240601"
+# 5m / 15m 只有 5m 策略和 --detail 用到，6 年全生成又大又慢（每个币 70 多万根）
+DEFAULT_SHORT_TF_DAYS = 730
+SHORT_TFS = ("5m", "15m")
 
 # 行情状态：日漂移 mu、日波动 sigma、持续天数范围、爆仓事件概率（每天）与下跌占比、成交量倍数
 REGIMES: dict[str, dict] = {
@@ -388,6 +403,8 @@ THIS DIRECTORY CONTAINS SYNTHETIC (RANDOMLY GENERATED) MARKET DATA - NOT REAL.
 由 scripts/make_synthetic_data.py 生成，生成时间 {now} UTC，随机种子 {seed}。
 交易对：{pairs}
 区间：{start} ~ {end}（{days} 天），周期：{tfs}
+{short_tf}
+上线晚的币（那天之前没有数据）：{listings}
 标记价格/资金费率：{fut}
 
 只用来检查回测流程（配置、脚本、策略代码）能否跑通。
@@ -400,7 +417,8 @@ THIS DIRECTORY CONTAINS SYNTHETIC (RANDOMLY GENERATED) MARKET DATA - NOT REAL.
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="生成合成测试数据（仅用于流程自检，不是真实行情）")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="输出目录（默认 user_data/data/okx-synthetic）")
-    ap.add_argument("--days", type=int, default=730, help="天数（默认 730 ≈ 2 年）")
+    ap.add_argument("--start", default=None, help=f"开始日期 YYYYMMDD（默认 {DEFAULT_START}；写了 --days 时不用）")
+    ap.add_argument("--days", type=int, default=None, help="天数（从结束日期往前倒推；写了就不看 --start）")
     ap.add_argument("--end", default=None, help="结束日期 YYYYMMDD（默认今天 UTC 0 点）")
     ap.add_argument("--seed", type=int, default=42, help="随机种子（同一种子生成的数据完全相同）")
     ap.add_argument("--pairs", default=" ".join(PAIR_SPECS), help=f"币种，空格分隔（可选：{' '.join(PAIR_SPECS)}）")
@@ -410,6 +428,17 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=92,
         help="标记价格/资金费率只生成最近 N 天（模仿 OKX 只有约 3 个月历史）；0 = 覆盖全部区间",
+    )
+    ap.add_argument(
+        "--listings",
+        default=DEFAULT_LISTINGS,
+        help=f'上线晚的币，空格分隔的 币:YYYYMMDD（那天之前没有数据），默认 "{DEFAULT_LISTINGS}"；"" = 所有币同一天开始',
+    )
+    ap.add_argument(
+        "--short-tf-days",
+        type=int,
+        default=DEFAULT_SHORT_TF_DAYS,
+        help=f"5m / 15m 只生成最近 N 天（默认 {DEFAULT_SHORT_TF_DAYS}）；0 = 覆盖全部区间",
     )
     args = ap.parse_args(argv)
 
@@ -430,10 +459,6 @@ def main(argv: list[str] | None = None) -> int:
     if out.exists() and any(out.rglob("*.feather")) and not (out / MARKER_NAME).is_file():
         print(f"错误：{out} 里已有数据文件且没有合成数据标记，可能是真实数据，拒绝覆盖。", file=sys.stderr)
         return 2
-    if out.exists():
-        shutil.rmtree(out)
-    (out / "futures").mkdir(parents=True)
-
     bases = [b.upper() for b in args.pairs.split()]
     unknown = [b for b in bases if b not in PAIR_SPECS]
     if unknown:
@@ -454,14 +479,41 @@ def main(argv: list[str] | None = None) -> int:
         print(f"错误：本脚本只会生成 1h 的标记价格/资金费率，但 freqtrade 需要 {need}", file=sys.stderr)
         return 2
 
-    end = (
-        pd.Timestamp(datetime.strptime(args.end, "%Y%m%d"), tz="UTC")
-        if args.end
-        else pd.Timestamp.now(tz="UTC").floor("D")
-    )
-    start = end - pd.Timedelta(days=args.days)
+    def _ymd(txt: str, what: str) -> pd.Timestamp:
+        try:
+            return pd.Timestamp(datetime.strptime(txt, "%Y%m%d"), tz="UTC")
+        except ValueError:
+            raise SystemExit(f"错误：{what} 要写成 YYYYMMDD（收到：{txt}）") from None
+
+    end = _ymd(args.end, "--end") if args.end else pd.Timestamp.now(tz="UTC").floor("D")
+    if args.days is not None:
+        start = end - pd.Timedelta(days=args.days)
+    else:
+        start = _ymd(args.start or DEFAULT_START, "--start")
+    n_days = int((end - start).days)
+    if n_days < 30:
+        print(f"错误：区间只有 {n_days} 天（{start.date()} ~ {end.date()}），太短", file=sys.stderr)
+        return 2
     index = pd.date_range(start, end, freq="5min", inclusive="left")
-    n_days = args.days
+
+    listings: dict[str, pd.Timestamp] = {}
+    for item in args.listings.split():
+        coin, _, day = item.partition(":")
+        coin = coin.upper()
+        if coin not in PAIR_SPECS or not day:
+            print(f"错误：--listings 写成 币:YYYYMMDD，例如 SOL:20210601（收到：{item}）", file=sys.stderr)
+            return 2
+        listings[coin] = _ymd(day, f"--listings {coin}")
+    for coin, t in listings.items():
+        if coin in bases and not (start < t < end - pd.Timedelta(days=30)):
+            print(f"错误：{coin} 的上线日期 {t.date()} 要在 {start.date()} 和结束前 30 天之间", file=sys.stderr)
+            return 2
+    short_start = start if args.short_tf_days <= 0 else max(start, end - pd.Timedelta(days=args.short_tf_days))
+
+    # 参数都检查完了再删旧数据
+    if out.exists():
+        shutil.rmtree(out)
+    (out / "futures").mkdir(parents=True)
     rng = np.random.default_rng(args.seed)
     dh = get_datahandler(out, "feather")
 
@@ -489,8 +541,14 @@ def main(argv: list[str] | None = None) -> int:
         spec = PAIR_SPECS[base]
         pair = f"{base}/USDT:USDT"
         df5 = build_pair(base, spec, index, regimes, market, sv_market, act_vol, act_volu, gap, rng)
+        if base in listings:
+            # 上线晚：那天之前没有任何K线（随机数照常生成，这样其他币的数据不受影响）
+            df5 = df5[df5["date"] >= listings[base]].reset_index(drop=True)
         for tf in tfs:
-            dh.ohlcv_store(pair, tf, resample(df5, tf), CandleType.FUTURES)
+            out_df = resample(df5, tf)
+            if tf in SHORT_TFS:
+                out_df = out_df[out_df["date"] >= short_start].reset_index(drop=True)
+            dh.ohlcv_store(pair, tf, out_df, CandleType.FUTURES)
         df1h = resample(df5, "1h")
         recent = df1h[df1h["date"] >= fut_start].reset_index(drop=True)
         dh.ohlcv_store(pair, mark_tf, build_mark(recent, rng, spec["tick"]), mark_type)
@@ -499,7 +557,8 @@ def main(argv: list[str] | None = None) -> int:
         tiers[pair] = leverage_tiers(spec)
         d1 = resample(df5, "1d")
         print(
-            f"  {pair:<15} 起始 {spec['p0']:>10g}  最终 {df5['close'].iloc[-1]:>12.6g}  "
+            f"  {pair:<15} {'从 ' + str(listings[base].date()) + ' 起' if base in listings else '':<16}"
+            f"起始 {df5['open'].iloc[0]:>10g}  最终 {df5['close'].iloc[-1]:>12.6g}  "
             f"最高 {df5['high'].max():>12.6g}  最低 {df5['low'].min():>12.6g}  "
             f"日线阴线占比 {(d1['close'] < d1['open']).mean():.0%}"
         )
@@ -526,6 +585,12 @@ def main(argv: list[str] | None = None) -> int:
             end=end.date(),
             days=n_days,
             tfs=" ".join(tfs),
+            short_tf=(
+                f"5m / 15m：只有 {short_start.date()} 之后"
+                if short_start > start and any(t in SHORT_TFS for t in tfs)
+                else "所有周期都覆盖全部区间"
+            ),
+            listings="、".join(f"{c} {t.date()}" for c, t in listings.items() if c in bases) or "没有",
             fut=f"只有 {fut_start.date()} 之后（{mark_tf}）" if args.futures_history_days > 0 else "覆盖全部区间",
         ),
         encoding="utf-8",

@@ -10,11 +10,12 @@
 #
 # 做的事：
 #   1. 生成合成数据 → user_data/data/okx-synthetic/（scripts/make_synthetic_data.py）
-#   2. 批量回测全部策略 + 8% 回撤检查（scripts/backtest_all.sh --config configs/config.synthetic-test.json）
+#   2. 批量回测全部策略 + 账户回撤检查（上限默认 15%；scripts/backtest_all.sh --config configs/config.synthetic-test.json）
 #      结果在 user_data/backtest_results/synthetic/run_<时间>/
 #   3. 实盘保护逻辑自检（scripts/check_live_guards.py：止损补救、只在信号刚收盘时入场）
 #      —— 这些只在实盘/模拟盘出现，回测测不到，所以单独测
-#   4. 对 3 个移植策略、SampleFuturesSanity 和第 2 步的 6 个新策略跑 freqtrade 的 lookahead-analysis（未来函数检查）
+#   4. 对 3 个移植策略、SampleFuturesSanity、第 2 步的 6 个新策略和第 3 轮的 XSMomentum、BigTrendShortLowRisk
+#      跑 freqtrade 的 lookahead-analysis（未来函数检查）
 #      和 recursive-analysis（指标预热长度是否够），日志和 CSV 也放在同一个结果目录
 #
 # !! 合成数据是随机生成的，回测收益/回撤数字没有任何意义；这里只看"每一步有没有报错"。
@@ -32,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --regen) REGEN="yes"; shift ;;
         --quick) QUICK="yes"; shift ;;
-        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,/^# -----/p' "$0" | sed '$d'; exit 0 ;;
         *) echo "未知参数：$1（可选 --regen / --quick）" >&2; exit 1 ;;
     esac
 done
@@ -88,6 +89,8 @@ if [[ "$QUICK" == "no" ]]; then
     # 第 2 步新策略：1h 策略取最近 150 天；FundingContrarian 只看最近 80 天（合成资金费率只有最近约 92 天，前面不开仓）
     # TsmomTrend 从 300 天前开始：420 天起的窗口里有一笔交易碰上 freqtrade 回测结尾强制平仓单没成交、
     #   被 lookahead-analysis 误报成"入场偏差"（没有任何指标列被标记；逐根截断数据重算信号也完全一致）
+    # 第 3 轮：XSMomentum 预热 130 根（截面排名要用整个币池，分析工具运行时自动用配置里的全部交易对）；
+    #   BigTrendShortLowRisk 和 BigTrendShort 信号完全相同（只是仓位减半）
     PLAN="BigTrendShort:420:150:300,400,500
 DailyThreeSoldiersShort:600:150:30,100,300,500
 VolumeSpikeShort:150:35:300,600,1000
@@ -97,7 +100,9 @@ TsmomTrend:300:150:200,300,500
 BigTrendBoth:420:150:300,400,500
 RangeMeanReversion:150:60:150,300,500
 VolSqueezeBreakout:150:60:150,300,500
-FundingContrarian:80:70:100,200,400"
+FundingContrarian:80:70:100,200,400
+XSMomentum:420:150:130,200,300,500
+BigTrendShortLowRisk:420:150:300,400,500"
 
     for line in $PLAN; do
         IFS=':' read -r STRAT LA_DAYS RA_DAYS RA_STARTUP <<< "$line"

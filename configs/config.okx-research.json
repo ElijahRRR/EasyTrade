@@ -5,14 +5,21 @@
     // 和 config.okx-backtest.json 基本一样（OKX USDT 永续、逐仓、1000 USDT、只回测不下单），区别：
     //   1. 交易对换成 pairs.okx-research.json（约 60 个）：币越多、样本越大，越不容易"只对那 20 个币有效"。
     //   2. max_open_trades = 5：同时最多 5 个仓位。每笔开多少由策略自己按止损距离算
-    //      （easytrade_risk.py：打到止损约亏总资金 0.5%），stake_amount = "unlimited" 只是给策略一个上限。
+    //      （easytrade_risk.py：打到止损约亏总资金 1%，2026-11-07 起，以前 0.5%；BigTrendShort 自己一直是 1%），
+    //      stake_amount = "unlimited" 只是给策略一个上限。
     //
-    // 研究脚本每次运行会在结果目录里生成 pairs.effective.json（去掉了历史数据不够的币），
+    // 研究脚本每次运行会在结果目录里生成 pairs.effective.json（去掉了数据不够的币），
     // 用第二个 --config 叠加在本文件后面，所以真正参与回测的币以那个文件为准。
+    // 第 3 轮起：研究数据默认从 2021-01-01 开始（包含 2021 年牛市、2022 年熊市）。上线晚的币不再整个去掉：
+    //   只要在"样本外"开始之前有至少 365 天"能交易"的历史就保留（RESEARCH_MIN_TRAIN_DAYS）。"能交易" = 第一根K线
+    //   + 指标预热之后：freqtrade 回测按根数裁掉每个币自己开头的预热K线，研究里训练段要等策略自己的预热（日线最多 300 天），
+    //   样本外、走步各段最多等 600 天。中途断了（已下架）或历史太短的币才去掉。
+    //   每个币每一段从哪天开始能交易，写在结果目录的 data_check.txt 里。
     // 也可以单独用它回测：
     //   .venv/bin/freqtrade backtesting --config configs/config.okx-research.json --strategy DonchianTrend
     //
-    // OKX 的 mark 价格和资金费率历史只有最近约 3 个月，更早的资金费按 0 近似（同 config.okx-backtest.json）。
+    // OKX 的资金费率历史只有最近约 3 个月，更早的资金费按 0 近似（同 config.okx-backtest.json）；
+    // 所以下载脚本对 OKX 只下最近 120 天的标记价格和资金费率（更早的用不上，下了也白花几个小时）。
     // ============================================================
     "$schema": "https://schema.freqtrade.io/schema.json",
     "add_config_files": [
