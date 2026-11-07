@@ -1,9 +1,11 @@
 # ------------------------------------------------------------------
 # 常用命令快捷方式。用法：make <目标> [ARGS="..."]
-#   例：make download ARGS="--timerange 20240101- --timeframes '5m 1h'"
+#   例：make download ARGS="--timerange 20240101- --timeframes '1h 4h 1d'"
 #       make backtest ARGS="--strategies MyStrategy --timerange 20240101-20250101"
 # 运行方式自动检测（.venv > PATH 里的 freqtrade > Docker），
 # 也可以强制：make backtest FT_RUNNER=docker
+# 账户回撤上限（项目硬规则，含浮亏）默认 15%（2026-11-07 起；以前是 8%），backtest / check / research 共用；
+# 临时改：make research MAX_DD_PCT=12（定义在 scripts/_common.sh 和 scripts/check_drawdown.py）
 # ------------------------------------------------------------------
 SHELL := /bin/bash
 COMPOSE := docker compose -f docker/docker-compose.yml
@@ -11,7 +13,7 @@ ARGS ?=
 export FT_RUNNER
 
 .DEFAULT_GOAL := help
-.PHONY: help venv pull validate download backtest check research research-synthetic synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
+.PHONY: help venv pull validate download backtest check research research-synthetic research-benchmarks synthetic-data synthetic-test guard-test pairs notify-test notify-send ui ui-venv up down logs ps zh-build zh-install docker-build
 
 help:  ## 显示本帮助
 	@echo "可用命令（make <目标>）："
@@ -30,25 +32,28 @@ pull:  ## 拉取 Docker 镜像
 
 validate:  ## 校验所有入口配置（freqtrade show-config）
 	@source scripts/_common.sh; \
-	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json; do \
+	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.binance-xsmomentum.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json; do \
 		if ft show-config --config $$c > /dev/null 2>&1; then echo "通过  $$c"; \
 		else echo "失败  $$c"; ft show-config --config $$c 2>&1 | tail -n 20; exit 1; fi; \
 	done
 
-download:  ## 下载 OKX 合约历史数据（参数见 scripts/download_okx_data.sh）
+download:  ## 下载 OKX 合约历史数据（默认 2021-01-01 起、含 1m，要好几个小时；只要研究数据：ARGS="--timeframes '1h 4h 1d'"）
 	bash scripts/download_okx_data.sh $(ARGS)
 
-backtest:  ## 批量回测 + 8% 回撤检查（参数见 scripts/backtest_all.sh）
+backtest:  ## 批量回测 + 账户回撤检查（上限默认 15%，可改：make backtest MAX_DD_PCT=12；参数见 scripts/backtest_all.sh）
 	bash scripts/backtest_all.sh $(ARGS)
 
-check:  ## 只做回撤检查（默认检查最近一次回测；ARGS 可填结果目录）
+check:  ## 只做回撤检查（上限默认 15%、MAX_DD_PCT 可改；默认检查最近一次回测；ARGS 可填结果目录）
 	@source scripts/_common.sh; py_ft scripts/check_drawdown.py $(ARGS)
 
-research:  ## 第 2 步策略研究：训练段/样本外/走步验证 + 自动调参 + 中文排名表（可能要几个小时；参数见 scripts/research.sh）
+research:  ## 策略研究（第 3 轮）：2021 年起的数据，训练段/样本外/走步验证 + 子账户组合检查 + 中文排名表（回撤上限默认 15%、MAX_DD_PCT 可改；默认不调参，约 1~2 小时；参数见 scripts/research.sh）
 	bash scripts/research.sh $(ARGS)
 
-research-synthetic:  ## 用合成数据离线跑一遍策略研究流程（不联网，几分钟；数字没有意义）
+research-synthetic:  ## 用合成数据离线跑一遍策略研究流程（不联网，约 15 ~ 20 分钟；数字没有意义）
 	bash scripts/research.sh --synthetic $(ARGS)
+
+research-benchmarks:  ## 基准策略研究：别人公开的策略（freqtrade-strategies、NFI）用同一套流程比较，只用默认参数（先 bash scripts/fetch_benchmarks.sh；见 docs/benchmarks.md）
+	bash scripts/research_benchmarks.sh $(ARGS)
 
 synthetic-data:  ## 生成合成测试数据（不是真实行情，只用于流程自检）
 	@source scripts/_common.sh; FT_RUNNER_RESOLVED=synthetic; py_ft scripts/make_synthetic_data.py $(ARGS)

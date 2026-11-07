@@ -8,9 +8,11 @@ hyperopt 也会把这个模块一起打包。
 
 提供的回调 (全部是 freqtrade 官方回调, 说明见 docs/strategies-step2.md "趋势类 / 共用风控"):
   leverage()            杠杆 = min(max_leverage_param 默认 2, 交易所该币上限, 5), 永远 <= 5 倍
-  custom_stake_amount() 按止损距离定仓: 打到止损约亏 总资金 x risk_per_trade (默认 0.5%)
-                        + 组合热度上限: 所有持仓 "从现价打到各自止损还会亏多少" 合计 <= max_portfolio_risk (默认 3%)
-                        + 回撤降仓: 账户权益 (含浮亏) 比最高点低 >= dd_throttle_start (默认 4%) 时, 新仓风险 x dd_throttle_mult (默认 0.5)
+  custom_stake_amount() 按止损距离定仓: 打到止损约亏 总资金 x risk_per_trade (默认 1%)
+                        + 组合热度上限: 所有持仓 "从现价打到各自止损还会亏多少" 合计 <= max_portfolio_risk (默认 6%)
+                        + 回撤降仓: 账户权益 (含浮亏) 比最高点低 >= dd_throttle_start (默认 8%) 时, 新仓风险 x dd_throttle_mult (默认 0.5)
+                        这三个默认值 2026-11-07 随账户回撤上限 8% -> 15% 一起放大到 2 倍 (第 1、2 轮是 0.5% / 3% / 4%);
+                        都是类属性, 子类可以覆盖 (例如 risk_per_trade = 0.005 = 旧的一半仓位)
   custom_stoploss()     初始止损 = 入场价 -/+ stop_atr_mult x 信号K线的 ATR (ATR 和止损价存进交易记录, 重启不丢)
                         + 策略自己的移动止损 (唐奇安通道 / 吊灯止损), 只收紧不放宽
   custom_exit()         止损补救 (实盘: 止损价已被越过却挂不上 -> 立即平仓) / 持仓超时 (可选)
@@ -121,12 +123,15 @@ class EasyTradeRiskMixin:
     max_leverage_param: float = 2.0
 
     # ---------------- 仓位 (按止损距离定仓) ----------------
-    # 每笔: 打到止损亏 ≈ 总资金 x risk_per_trade。
+    # 三个风险预算 (risk_per_trade / max_portfolio_risk / dd_throttle_start) 跟着项目的账户回撤上限定:
+    # 2026-11-07 回撤上限从 8% 放宽到 15% (scripts/check_drawdown.py DEFAULT_MAX_DD_PCT), 这三个一起放大到 2 倍
+    # (第 1、2 轮研究用的是 0.5% / 3% / 4%)。子类可以直接覆盖 (类属性), 例如 risk_per_trade = 0.005。
+    # 每笔: 打到止损亏 ≈ 总资金 x risk_per_trade (默认 1%; 以前 0.5%)。
     # 名义仓位 = 风险金额 / (止损距离 + 成本缓冲); 保证金 = 名义仓位 / 杠杆。
-    risk_per_trade: float = 0.005
-    # 组合热度上限: 所有持仓 "从现价打到各自当前止损还会亏多少" 合计不超过 总资金 x 3%。
-    # 币之间高度相关, 急涨急跌时可能所有止损一起被打到, 这个上限就是 "最坏一起亏多少"。
-    max_portfolio_risk: float = 0.03
+    risk_per_trade: float = 0.01
+    # 组合热度上限: 所有持仓 "从现价打到各自当前止损还会亏多少" 合计不超过 总资金 x 6% (以前 3%)。
+    # 币之间高度相关, 急涨急跌时可能所有止损一起被打到, 这个上限就是 "最坏一起亏多少" (远小于 15% 的回撤上限)。
+    max_portfolio_risk: float = 0.06
     # 剩余热度不到一笔正常风险的 25% 时, 这一笔就不开了 (避免开一堆很小的仓)。
     min_risk_fraction: float = 0.25
     # 手续费 + 滑点缓冲 (OKX/币安 taker 约 0.05% x 2 边 + 滑点, 再留余量)
@@ -143,8 +148,9 @@ class EasyTradeRiskMixin:
     # ---------------- 回撤降仓 ----------------
     # 账户权益 (已平仓余额 + 持仓浮动盈亏) 比运行以来最高点低 >= dd_throttle_start 时,
     # 新开仓的风险乘 dd_throttle_mult。dd_throttle_start = 0 关闭。
+    # 默认 8% (以前 4%): 大约是 15% 回撤上限的一半, 离上限还有一半距离时开始踩刹车。
     # 注意: 实盘重启后 "最高点" 从重启那一刻重新算。
-    dd_throttle_start: float = 0.04
+    dd_throttle_start: float = 0.08
     dd_throttle_mult: float = 0.5
 
     # ---------------- 止损 ----------------

@@ -32,6 +32,12 @@ user_data/*.sqlite-*
 *.log
 
 # 策略的 hyperopt 参数文件可以提交（与策略同名的 .json），不要忽略 user_data/strategies/
+# 例外：第三方基准策略（scripts/fetch_benchmarks.sh 下载的固定版本，GPL-3.0，不进 git；见 docs/benchmarks.md）
+user_data/strategies/vendor/
+user_data/strategies/.vendor-download.*/
+# NFI 运行/回测时在 user_data/ 下写的缓存文件（止盈目标、手动"持有"设置）
+user_data/nfi*-profit_max-*.json
+user_data/nfi-hold-trades.json
 
 # ---------- Python ----------
 .venv

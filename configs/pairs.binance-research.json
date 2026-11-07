@@ -1,0 +1,84 @@
+{
+    // 配置片段，不单独使用（被 config.binance-xsmomentum.json 的 add_config_files 引入）。
+    // 币安 U 本位永续上跑截面动量 XSMomentum 用的交易对：和第 3 轮研究排名的是同一批币
+    // （configs/pairs.okx-research.json 的 60 个，那份名单挑的时候就要求"币安 U 本位上也有、而且名字相同"）。
+    //
+    // 为什么不能用 pairs.binance-usdt-perp.json（20 个币）：XSMomentum 是"币和币之间排名"，做多前 3、做空后 3。
+    //   研究里是在约 60 个币里排名，20 个币里的"前 3 / 后 3"是另一个策略，研究结果对它不成立。
+    //
+    // 上线前再对一遍（开发机连不上币安，名单没有用接口核对过）：
+    //   1. 以这次研究结果目录里的 pairs.effective.json 为准：研究时因为数据不够被去掉的币，这里也删掉，两边排名的币才完全一样；
+    //   2. 币安上没有的币，freqtrade 启动时会自动去掉（日志里有 "Removing it from whitelist" 提示），
+    //      少几个影响不大；少很多（例如少于 50 个）就不是研究过的那个策略了，先别上线；
+    //   3. 币安对 PEPE、SHIB 这类小单价币叫 1000PEPE 等，研究名单本来就没收这些币，不用改名。
+    // 启动日志里 XSMomentum 会打印"实盘排名币池 = 当前白名单 N 个币"，少于 40 个时有警告。
+    "exchange": {
+        "pair_whitelist": [
+            // ---- 主流币（和 pairs.okx-usdt-perp.json 相同的 20 个）----
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "ADA/USDT:USDT",
+            "AVAX/USDT:USDT",
+            "LINK/USDT:USDT",
+            "LTC/USDT:USDT",
+            "BCH/USDT:USDT",
+            "DOT/USDT:USDT",
+            "TRX/USDT:USDT",
+            "SUI/USDT:USDT",
+            "APT/USDT:USDT",
+            "ARB/USDT:USDT",
+            "OP/USDT:USDT",
+            "NEAR/USDT:USDT",
+            "FIL/USDT:USDT",
+            "ATOM/USDT:USDT",
+            "ETC/USDT:USDT",
+            // ---- 公链 / 基础设施 ----
+            "INJ/USDT:USDT",
+            "TIA/USDT:USDT",
+            "STX/USDT:USDT",
+            "IMX/USDT:USDT",
+            "XLM/USDT:USDT",
+            "ALGO/USDT:USDT",
+            "ICP/USDT:USDT",
+            "EGLD/USDT:USDT",
+            "THETA/USDT:USDT",
+            "XTZ/USDT:USDT",
+            "AR/USDT:USDT",
+            "CFX/USDT:USDT",
+            "DASH/USDT:USDT",
+            "ZEC/USDT:USDT",
+            // ---- DeFi ----
+            "UNI/USDT:USDT",
+            "AAVE/USDT:USDT",
+            "CRV/USDT:USDT",
+            "LDO/USDT:USDT",
+            "COMP/USDT:USDT",
+            "SNX/USDT:USDT",
+            "SUSHI/USDT:USDT",
+            "1INCH/USDT:USDT",
+            "YFI/USDT:USDT",
+            "DYDX/USDT:USDT",
+            "ENS/USDT:USDT",
+            // ---- AI / 数据 ----
+            "WLD/USDT:USDT",
+            "FET/USDT:USDT",
+            "GRT/USDT:USDT",
+            "PYTH/USDT:USDT",
+            // ---- 游戏 / NFT / 社区币 ----
+            "SAND/USDT:USDT",
+            "MANA/USDT:USDT",
+            "AXS/USDT:USDT",
+            "APE/USDT:USDT",
+            "GALA/USDT:USDT",
+            "GMT/USDT:USDT",
+            "BLUR/USDT:USDT",
+            "PEOPLE/USDT:USDT",
+            "ORDI/USDT:USDT",
+            "MASK/USDT:USDT",
+            "TRB/USDT:USDT"
+        ]
+    }
+}

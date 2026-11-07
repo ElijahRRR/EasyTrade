@@ -14,7 +14,7 @@ TsmomTrend -- 时间序列动量 (Time-Series Momentum, TSMOM), 多空双向, �
   离场  做多: score 跌回 exit_z (默认 0) 以下 = 动量消失;  做空: score 回到 -exit_z 以上
         信号每天收盘重算, 效果接近 "每天调仓": 信号还在就继续拿, 信号没了就平
   止损  初始止损 = 入场价 -/+ stop_atr_mult x ATR20 (只防极端行情; 正常靠信号离场)
-  仓位  easytrade_risk: 每笔打到止损亏总资金 0.5%, 组合热度 <= 3%, 杠杆 <= 2 (硬上限 5)
+  仓位  easytrade_risk: 每笔打到止损亏总资金 1%, 组合热度 <= 6%, 杠杆 <= 2 (硬上限 5)
         仓位天然和波动率成反比 (止损 = 几倍 ATR), 相当于 TSMOM 的 "波动率目标" 定仓
 
 可 hyperopt 的参数 3 个 (只在训练段调参): mom_lookback / entry_z / stop_atr_mult。

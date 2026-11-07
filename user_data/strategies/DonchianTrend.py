@@ -11,7 +11,7 @@ DonchianTrend -- 唐奇安通道突破 (海龟交易法 "系统 2" 的简化版)
   离场  做多: 价格碰到最近 exit_period 根 K 线的最低价 (离场通道下轨, 作为移动止损挂着)
         做空: 价格碰到最近 exit_period 根 K 线的最高价
         通道只会往有利方向移动 (freqtrade 的止损只收紧不放宽), 所以盈利单会一路跟着趋势走
-  仓位  easytrade_risk: 每笔打到止损亏总资金 0.5%, 组合热度 <= 3%, 杠杆 <= 2 (硬上限 5)
+  仓位  easytrade_risk: 每笔打到止损亏总资金 1%, 组合热度 <= 6%, 杠杆 <= 2 (硬上限 5)
 
 可 hyperopt 的参数只有 3 个 (只在训练段调参, 验证段不改): entry_period / exit_period / stop_atr_mult。
 周期: 默认 1d; 4h 用 --timeframe 4h (参数单位是 "根 K 线", 4h 的 55 根 ≈ 9 天, 是另一套系统, 要单独验证)。

@@ -11,9 +11,12 @@
     //   - 不收 2024 年以后改过名或换过代币的币（MATIC→POL、FTM→S、RNDR→RENDER、EOS→A、MKR→SKY 等），
     //     因为它们的历史数据会断开。
     //
-    // 数据不够怎么办：有些币可能已经下架，或者 2024-01 时还没有上线，OKX 那边数据会不全。
+    // 数据不够怎么办：有些币可能已经下架，或者 2021-01 时还没有上线，OKX 那边数据会不全。
     //   freqtrade 会自动去掉已下架的币（启动日志里有 "Removing it from whitelist" 提示）；
-    //   研究脚本也会自动丢掉历史数据不够（覆盖不了评估区间）的币。不用手工删。
+    //   研究脚本（第 3 轮起）：上线晚的币只要在"样本外"开始之前有至少 365 天"能交易"的历史就保留（RESEARCH_MIN_TRAIN_DAYS；
+    //   能交易 = 第一根K线 + 指标预热之后，研究里要等 300 ~ 600 天）；数据中途断了、或历史太短的币自动去掉。
+    //   每个币每一段从哪天开始能交易写在结果目录的 data_check.txt。不用手工删。
+    //   币安上跑截面动量 XSMomentum 用的 pairs.binance-research.json 是这份名单的副本：改这里时那边也一起改。
     //
     // 想按 OKX 当前成交额重新选：bash scripts/update_okx_pairs.sh 60
     //   （需要能连上 OKX，美国 VPS 可以。它写的是 configs/pairs.okx-usdt-perp.json，

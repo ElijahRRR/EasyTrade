@@ -3,43 +3,73 @@
 # 第 2 步：策略研究 —— 一条命令跑完 训练段 / 样本外 / 走步验证（+ 可选自动调参），最后出一张中文排名表
 #
 # 用法：
-#   make research                                         # = bash scripts/research.sh（VPS 上用 tmux 跑，可能要几个小时）
-#   make research RESEARCH_HYPEROPT=0                     # 只用默认参数，不调参（快很多）
+#   make research                                         # = bash scripts/research.sh（VPS 上用 tmux 跑，可能要一两个小时）
+#   make research RESEARCH_HYPEROPT=1                     # 另外再自动调参（第 3 轮默认不调参，见下面 --hyperopt）
 #   make research ARGS="--strategies 'DonchianTrend TsmomTrend'"
 #   make research ARGS="--no-download"                    # 不更新数据，直接用已下载的
 #   make research-synthetic                               # 合成数据离线跑一遍流程（不联网，数字没有意义）
 #
 # 参数（括号里是同名环境变量，命令行优先）：
 #   --config FILE        研究配置，默认 configs/config.okx-research.json（RESEARCH_CONFIG）
-#   --strategies "A B"   要研究的策略（RESEARCH_STRATEGIES），默认：
-#                        BigTrendShort BigTrendBoth DonchianTrend TsmomTrend RangeMeanReversion VolSqueezeBreakout FundingContrarian
-#   --start YYYYMMDD     数据从哪天开始（RESEARCH_START，默认 20240101）
+#   --strategies "A B"   要研究的策略（RESEARCH_STRATEGIES），默认（第 3 轮：只留日线策略）：
+#                        BigTrendShort BigTrendShortLowRisk BigTrendBoth TsmomTrend DonchianTrend XSMomentum
+#                        （没找到的策略跳过，表里不会有它，运行结束时提示，退出码 2）
+#   --start YYYYMMDD     研究从哪天开始（RESEARCH_START，默认 20210101：包含 2021 年牛市和 2022 年熊市）。
+#                        下载时会再往前多下"最长的指标预热"那么多天（日线策略约 600 天，交易所有多少给多少），
+#                        这样训练段第一天指标就是热的；多下的那段只用来预热，不交易
+#   --min-train-days N   上线晚的币：样本外开始前至少要有 N 天"能交易"的历史才保留（RESEARCH_MIN_TRAIN_DAYS，默认 365）。
+#                        "能交易" = 第一根K线 + 训练段的指标预热（日线策略最多 300 天）之后：freqtrade 回测按根数裁掉
+#                        每个币自己开头的预热K线，上线晚的币要等这么久才开始交易（样本外、走步各段预热最多 600 根，等得更久；
+#                        每个币每段从哪天开始能交易写在 data_check.txt）。实盘只要等策略自己的预热
 #   --no-download        不下载/更新数据（RESEARCH_DOWNLOAD=0）
-#   --hyperopt 0|1       是否自动调参（RESEARCH_HYPEROPT，默认 1；--no-hyperopt 等于 0）
+#   --hyperopt 0|1       是否自动调参（RESEARCH_HYPEROPT，第 3 轮默认 0 = 只用策略代码里的默认参数；--no-hyperopt 等于 0）。
+#                        第 2 轮的真实结果：调参后训练段很好看、样本外反而更差（例如 DonchianTrend 训练 PF 4.31 → 样本外 0.79），
+#                        走步各折调出的参数跳来跳去 —— 是在拟合噪音。所以这一轮先只看默认参数
 #   --epochs N           每次调参跑几轮（RESEARCH_EPOCHS，默认 60；前 30 轮是随机抽样，后面在好的参数附近找）
 #   --timeout SEC        每次调参最多跑几秒，只是保险（RESEARCH_HYPEROPT_TIMEOUT，默认 3600 = 60 分钟；0 = 不限）
-#                        2 核 VPS 上 60 个币、60 轮一般 10 ~ 30 分钟跑完；到时间没跑满时，跑了几轮取决于机器快慢
+#                        2 核 VPS 上 60 个币、约 6 年数据、60 轮一般 20 ~ 60 分钟跑完；到时间没跑满时，跑了几轮取决于机器快慢
 #   --loss NAME          调参目标（RESEARCH_LOSS，默认 SharpeHyperOptLossDaily；也可以 CalmarHyperOptLoss）
-#   --folds K            走步验证折数（RESEARCH_WF_FOLDS，默认 4；0 = 不做走步验证）
+#   --folds K            走步验证折数（RESEARCH_WF_FOLDS，默认 6；0 = 不做走步验证；数据放不下时自动减少）
+#   --wf-train-days N    走步每折训练窗口天数（RESEARCH_WF_TRAIN_DAYS，默认 365）
+#   --wf-test-days N     走步每折测试窗口天数（RESEARCH_WF_TEST_DAYS，默认 180；0 = 第 2 轮的自动切法：
+#                        最近一半时间平分成 K 折、训练窗口 = 测试窗口 × RESEARCH_WF_TRAIN_RATIO）
 #   --jobs N             调参同时开几个进程（RESEARCH_JOBS，默认按 CPU 核数和可用内存自动定；-1 = 全部 CPU 核）
-#                        内存：每个调参进程要把全部K线装一份，60 个币约 1 GB / 个，主进程再加 0.5 ~ 1 GB；
-#                        2 个进程约需 3 GB。默认取 min(CPU 核数, (可用内存GB - 1) / 1.1)，至少 1
+#                        内存：每个调参进程要把全部K线装一份，60 个币、约 6 年数据约 2 GB / 个，主进程再加 1 ~ 2 GB；
+#                        2 个进程约需 6 GB。默认取 min(CPU 核数, (可用内存GB - 1) / 2.2)，至少 1
 #   --fee F              每边手续费+滑点（RESEARCH_FEE，默认 0.0007 = 0.07%；none = 用交易所费率）
-#   --max-dd PCT         账户最大回撤上限 %（RESEARCH_MAX_DD，默认 8）
+#   --max-dd PCT         账户最大回撤上限 %（含浮亏；RESEARCH_MAX_DD，没设时用 MAX_DD_PCT，都没设 = 15 = 项目硬规则。
+#                        2026-11-07 起 15%，第 1、2 轮是按 8% 判的；用的值写进 plan.json，以后重新出报告仍按它判。
+#                        按别的上限重新判一次已经跑完的结果，不重跑回测：
+#                        .venv/bin/python scripts/research_report.py report --run-dir <结果目录> --max-dd 12）
 #   --datadir DIR        K线数据目录（RESEARCH_DATADIR，默认 user_data/data/<交易所>）
 #   --synthetic          用合成数据离线跑（只检查流程；配置文件名含 synthetic 时也自动进入这个模式）
-# 其他环境变量：RESEARCH_SEED（随机种子，默认 42）  RESEARCH_WF_TRAIN_RATIO（走步每折训练/测试长度比，默认 2）
+# 其他环境变量：RESEARCH_SEED（随机种子，默认 42）  RESEARCH_WF_TRAIN_RATIO（--wf-test-days 0 时：走步训练/测试长度比，默认 2）
 #   RESEARCH_WARMUP_CANDLES（默认 600：每段回测开始前最多多加载多少根K线预热指标，有多少历史就给多少）
 #   RESEARCH_WF_MODE（rolling 滚动 / anchored 扩展，默认 rolling）  RESEARCH_TIMEFRAMES（默认 "1h 4h 1d"）
 #   RESEARCH_DETAIL（auto = 日线/4h 策略用 1h 模拟K线内部走势；none；或指定周期）
 #   RESEARCH_HYPEROPT_GATE（默认 1：默认参数在训练段不赚钱、或交易少于下面这个数就不调参）  RESEARCH_HYPEROPT_MIN_TRADES（默认 20）
 #   RESEARCH_MIN_TRADES（30） RESEARCH_MIN_PF（1.2） RESEARCH_PF_RATIO（0.6）：通过标准，见 README「第 2 步：策略研究」
+#   RESEARCH_PORTFOLIO="A,B,C"（子账户组合检查放哪几个策略；默认 = 默认参数在训练段赚钱、PF ≥ 1.0、回撤 ≤ 上限（默认 15%）的策略，
+#                        训练段日收益相关系数 ≥ 0.7 的两个只留一个；不看样本外，免得"用样本外挑、再用样本外判"）
+#   RESEARCH_SEEN_FROM（默认 20240101：以前的研究（第 2 轮）已经看过这天以后的数据，第 3 轮的选择是看着它定的。
+#                        样本外落在这段里时报告会提醒"不是独立证据"；研究开始到这天之前的那段（训练段的前一部分）
+#                        每个策略用默认参数单独回测一次 = "没看过的一段"，单独列表、也要赚钱才算通过。none = 不检查）
+#   RESEARCH_PORTFOLIO_WEIGHTS（equal 平均分，默认 / riskparity 按训练段日收益波动率的倒数分）：见 README「组合检查」
+# 每个策略自己的设置：configs/research-overrides/<策略类名>.json 存在时，回测/调参这个策略时自动叠加在研究配置后面
+#   （例如 XSMomentum.json：max_open_trades 6，多空各 3 笔；它实盘时单独一个机器人，配置和其他策略不一样）
+# 基准策略（别人公开的策略）：RESEARCH_BENCHMARKS=1 时，策略代码除了 user_data/strategies/*.py，再加上
+#   user_data/strategies/benchmarks/*.py（本项目写的封顶杠杆子类）和 user_data/strategies/vendor/*.py
+#   （scripts/fetch_benchmarks.sh 下载的固定版本第三方策略），合到结果目录的 strategies/src/ 里用；一律只用默认参数、不调参。
+#   一般不直接设它，用 make research-benchmarks（scripts/research_benchmarks.sh，说明见 docs/benchmarks.md）
 #
 # 做的事：
-#   1. 下载/更新数据（scripts/download_okx_data.sh，周期 1h 4h 1d，合约模式自动带 funding_rate 和 mark）
-#   2. 检查数据，去掉历史不够的币（写到结果目录的 pairs.effective.json），切分区间：
-#      训练段 = 前约 2/3，样本外 = 后约 1/3；走步验证 = 最近一半时间分 K 折，每折先训练、再测后面没见过的一段
-#   3. 每个策略用默认参数回测 训练段、样本外、走步各折
+#   1. 下载/更新数据（scripts/download_okx_data.sh，周期 1h 4h 1d，合约模式自动带 funding_rate 和 mark；
+#      本地数据比开始日期晚的币自动用 --prepend 补前面那段）
+#   2. 检查数据，去掉数据不够的币（中途断了的、样本外开始前能交易的历史不到 RESEARCH_MIN_TRAIN_DAYS 天的），
+#      实际用的币写到结果目录的 pairs.effective.json；data_check.txt 里列出每个币每一段从哪天开始能交易。切分区间：
+#      训练段 = 前约 2/3，样本外 = 后约 1/3；走步验证 = 从数据末尾往前排 K 折，每折先训练 365 天、再测后面没见过的 180 天；
+#      没看过的一段 = 训练段里 RESEARCH_SEEN_FROM 之前的部分（以前的研究没用过的数据）
+#   3. 每个策略用默认参数回测 训练段、没看过的一段（RESEARCH_SEEN_FROM 之前那段）、样本外、走步各折
 #   4. （调参时）默认参数在训练段要有足够交易（≥ RESEARCH_HYPEROPT_MIN_TRADES）而且赚钱，才调参；
 #      hyperopt 只用训练段 → 把调出的参数拿去测样本外；走步每折各自只用自己的训练窗口调参再测
 #      （这一折训练窗口里默认参数的交易数不够调参要求时，这一折不调参、用默认参数）
@@ -59,13 +89,18 @@
 # ------------------------------------------------------------------
 source "$(dirname "$0")/_common.sh"
 
-DEFAULT_STRATEGIES="BigTrendShort BigTrendBoth DonchianTrend TsmomTrend RangeMeanReversion VolSqueezeBreakout FundingContrarian"
+# 第 3 轮：只研究日线策略（1h 策略第 2 轮被手续费吃光：一年约 1200 笔），加上新的 BigTrendShortLowRisk、XSMomentum
+DEFAULT_STRATEGIES="BigTrendShort BigTrendShortLowRisk BigTrendBoth TsmomTrend DonchianTrend XSMomentum"
 
 CONFIG="${RESEARCH_CONFIG:-configs/config.okx-research.json}"
 STRATEGIES="${RESEARCH_STRATEGIES:-$DEFAULT_STRATEGIES}"
-START="${RESEARCH_START:-20240101}"
+START="${RESEARCH_START:-20210101}"
+# 第 2 轮用的是 2024-01-01 以后的数据：第 3 轮的样本外整段都在里面（见上面 RESEARCH_SEEN_FROM）
+SEEN_FROM="${RESEARCH_SEEN_FROM:-20240101}"
+MIN_TRAIN_DAYS="${RESEARCH_MIN_TRAIN_DAYS:-365}"
 DOWNLOAD="${RESEARCH_DOWNLOAD:-1}"
-HYPEROPT="${RESEARCH_HYPEROPT:-1}"
+# 第 3 轮默认不调参：第 2 轮调参后样本外普遍比默认参数还差（过拟合），见上面 --hyperopt
+HYPEROPT="${RESEARCH_HYPEROPT:-0}"
 EPOCHS="${RESEARCH_EPOCHS:-}"
 HO_TIMEOUT="${RESEARCH_HYPEROPT_TIMEOUT:-}"
 LOSS="${RESEARCH_LOSS:-SharpeHyperOptLossDaily}"
@@ -73,10 +108,13 @@ FOLDS="${RESEARCH_WF_FOLDS:-}"
 JOBS_N="${RESEARCH_JOBS:-}"
 FEE="${RESEARCH_FEE:-0.0007}"
 WARMUP="${RESEARCH_WARMUP_CANDLES:-600}"
-MAX_DD="${RESEARCH_MAX_DD:-8}"
+# 回撤上限：--max-dd > RESEARCH_MAX_DD > MAX_DD_PCT（scripts/_common.sh，默认 15 = 项目硬规则）
+MAX_DD="${RESEARCH_MAX_DD:-$MAX_DD_PCT}"
 DATADIR_ARG="${RESEARCH_DATADIR:-}"
 SEED="${RESEARCH_SEED:-42}"
 WF_RATIO="${RESEARCH_WF_TRAIN_RATIO:-2}"
+WF_TRAIN_DAYS="${RESEARCH_WF_TRAIN_DAYS:-365}"
+WF_TEST_DAYS="${RESEARCH_WF_TEST_DAYS:-180}"
 WF_MODE="${RESEARCH_WF_MODE:-rolling}"
 TIMEFRAMES="${RESEARCH_TIMEFRAMES:-1h 4h 1d}"
 DETAIL="${RESEARCH_DETAIL:-auto}"
@@ -86,6 +124,9 @@ MIN_TRADES="${RESEARCH_MIN_TRADES:-30}"
 MIN_PF="${RESEARCH_MIN_PF:-1.2}"
 PF_RATIO="${RESEARCH_PF_RATIO:-0.6}"
 SYNTHETIC="no"
+HO_FLAG_SET=0
+# 基准策略模式（见上面的说明）：0 = 平时，1 = 加上 benchmarks/ 和 vendor/ 里的策略、不调参
+BENCHMARKS="${RESEARCH_BENCHMARKS:-0}"
 
 while [[ $# -gt 0 ]]; do
     VAL="${2:-}"
@@ -93,9 +134,12 @@ while [[ $# -gt 0 ]]; do
         --config)       CONFIG="$VAL"; shift 2 ;;
         --strategies)   STRATEGIES="$VAL"; shift 2 ;;
         --start)        START="$VAL"; shift 2 ;;
+        --min-train-days) MIN_TRAIN_DAYS="$VAL"; shift 2 ;;
+        --wf-train-days) WF_TRAIN_DAYS="$VAL"; shift 2 ;;
+        --wf-test-days) WF_TEST_DAYS="$VAL"; shift 2 ;;
         --no-download)  DOWNLOAD=0; shift ;;
-        --hyperopt)     HYPEROPT="$VAL"; shift 2 ;;
-        --no-hyperopt)  HYPEROPT=0; shift ;;
+        --hyperopt)     HYPEROPT="$VAL"; HO_FLAG_SET=1; shift 2 ;;
+        --no-hyperopt)  HYPEROPT=0; HO_FLAG_SET=1; shift ;;
         --epochs)       EPOCHS="$VAL"; shift 2 ;;
         --timeout)      HO_TIMEOUT="$VAL"; shift 2 ;;
         --loss)         LOSS="$VAL"; shift 2 ;;
@@ -113,7 +157,7 @@ done
 case "$CONFIG" in *synthetic*) SYNTHETIC="yes" ;; esac
 if [[ "$SYNTHETIC" == "yes" ]]; then
     # 合成数据：只能离线跑（scripts/ft_offline.py，同 backtest_all.sh），结果单独存放；
-    # 默认把轮数、折数调小，几分钟就能跑完
+    # 调参时把轮数、折数调小（几分钟就能跑完）；不调参时折数和真实研究一样（6 折），流程完全相同
     # shellcheck disable=SC2034  # 被 _common.sh 里的 ft / py_ft 使用
     FT_RUNNER_RESOLVED="synthetic"
     DATADIR_ARG="${DATADIR_ARG:-user_data/data/okx-synthetic}"
@@ -121,13 +165,13 @@ if [[ "$SYNTHETIC" == "yes" ]]; then
     DOWNLOAD=0
     EPOCHS="${EPOCHS:-16}"
     HO_TIMEOUT="${HO_TIMEOUT:-300}"
-    FOLDS="${FOLDS:-2}"
+    if [[ "$HYPEROPT" == "1" ]]; then FOLDS="${FOLDS:-2}"; else FOLDS="${FOLDS:-6}"; fi
     HO_MIN_TRADES="${HO_MIN_TRADES:-5}"
 else
     RESULTS_BASE="user_data/research"
     EPOCHS="${EPOCHS:-60}"
     HO_TIMEOUT="${HO_TIMEOUT:-3600}"
-    FOLDS="${FOLDS:-4}"
+    FOLDS="${FOLDS:-6}"
     HO_MIN_TRADES="${HO_MIN_TRADES:-20}"
 fi
 
@@ -137,7 +181,12 @@ is_uint() { [[ "$1" =~ ^[0-9]+$ ]]; }
 is_num() { [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]]; }
 [[ -f "$CONFIG" ]] || bad_arg "找不到配置文件 $CONFIG"
 [[ -n "$STRATEGIES" ]] || bad_arg "--strategies 不能为空"
-[[ "$START" =~ ^[0-9]{8}$ ]] || bad_arg "--start 要写成 YYYYMMDD，例如 20240101（收到：$START）"
+[[ "$START" =~ ^[0-9]{8}$ ]] || bad_arg "--start 要写成 YYYYMMDD，例如 20210101（收到：$START）"
+case "$SEEN_FROM" in none|NONE|0|"") SEEN_FROM="" ;; esac
+[[ -z "$SEEN_FROM" || "$SEEN_FROM" =~ ^[0-9]{8}$ ]] || bad_arg "RESEARCH_SEEN_FROM 要写成 YYYYMMDD 或 none（收到：$SEEN_FROM）"
+is_uint "$MIN_TRAIN_DAYS" || bad_arg "--min-train-days 要是天数（收到：$MIN_TRAIN_DAYS）"
+is_uint "$WF_TRAIN_DAYS" || bad_arg "--wf-train-days 要是天数（收到：$WF_TRAIN_DAYS）"
+is_uint "$WF_TEST_DAYS" || bad_arg "--wf-test-days 要是天数（收到：$WF_TEST_DAYS）"
 [[ "$HYPEROPT" == "0" || "$HYPEROPT" == "1" ]] || bad_arg "--hyperopt 只能是 0 或 1（收到：$HYPEROPT）"
 is_uint "$EPOCHS" && [[ "$EPOCHS" -gt 0 ]] || bad_arg "--epochs 要是正整数（收到：$EPOCHS）"
 is_uint "$HO_TIMEOUT" || bad_arg "--timeout 要是秒数（收到：$HO_TIMEOUT）"
@@ -150,11 +199,20 @@ is_uint "$WARMUP" || bad_arg "RESEARCH_WARMUP_CANDLES 要是整数（收到：$W
     || bad_arg "--jobs 要是正整数或 -1（收到：$JOBS_N）"
 [[ "$FEE" == "none" ]] || is_num "$FEE" || bad_arg "--fee 要是小数，例如 0.0007（收到：$FEE）"
 is_num "$MAX_DD" || bad_arg "--max-dd 要是数字（收到：$MAX_DD）"
+awk -v x="$MAX_DD" 'BEGIN { exit !(x > 0 && x <= 100) }' || bad_arg "--max-dd 要在 0 ~ 100 之间（单位 %，收到：$MAX_DD）"
 is_num "$WF_RATIO" || bad_arg "RESEARCH_WF_TRAIN_RATIO 要是数字（收到：$WF_RATIO）"
 is_num "$MIN_PF" || bad_arg "RESEARCH_MIN_PF 要是数字（收到：$MIN_PF）"
 is_num "$PF_RATIO" || bad_arg "RESEARCH_PF_RATIO 要是数字（收到：$PF_RATIO）"
 [[ "$WF_MODE" == "rolling" || "$WF_MODE" == "anchored" ]] || bad_arg "RESEARCH_WF_MODE 只能是 rolling 或 anchored"
 [[ "$LOSS" =~ ^[A-Za-z0-9_]+$ ]] || bad_arg "--loss 名字不对（收到：$LOSS）"
+# 子账户组合检查（scripts/research_portfolio.py）：放进组合的策略（空 = 默认挑选规则）、权重方式
+PORTFOLIO="${RESEARCH_PORTFOLIO:-}"
+PORTFOLIO_WEIGHTS="${RESEARCH_PORTFOLIO_WEIGHTS:-equal}"
+PORTFOLIO_RE='^[A-Za-z0-9_, ]*$'
+[[ "$PORTFOLIO" =~ $PORTFOLIO_RE ]] || bad_arg "RESEARCH_PORTFOLIO 只能写策略名，用逗号分开，例如 \"BigTrendShortLowRisk,TsmomTrend\"（收到：$PORTFOLIO）"
+[[ "$PORTFOLIO_WEIGHTS" == "equal" || "$PORTFOLIO_WEIGHTS" == "riskparity" ]] \
+    || bad_arg "RESEARCH_PORTFOLIO_WEIGHTS 只能是 equal 或 riskparity（收到：$PORTFOLIO_WEIGHTS）"
+[[ "$BENCHMARKS" == "0" || "$BENCHMARKS" == "1" ]] || bad_arg "RESEARCH_BENCHMARKS 只能是 0 或 1（收到：$BENCHMARKS）"
 
 # ---------- 结果目录 ----------
 RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
@@ -188,6 +246,7 @@ seg_cn() {
     case "$1" in
         train) echo "训练段" ;;
         test)  echo "样本外" ;;
+        holdout) echo "没看过的一段" ;;
         main)  echo "训练段" ;;
         wf*train) local k="${1#wf}"; echo "走步第 ${k%train} 折训练窗口" ;;
         wf*)   echo "走步第 ${1#wf} 折" ;;
@@ -260,8 +319,14 @@ if [[ "$HYPEROPT" == "1" ]]; then
         HYPEROPT=0
         HO_REASON="没装 hyperopt 依赖"
     fi
-else
+elif [[ -n "${RESEARCH_HYPEROPT:-}" || "$HO_FLAG_SET" == "1" ]]; then
     HO_REASON="按设置不调参：RESEARCH_HYPEROPT=0"
+else
+    HO_REASON="第 3 轮默认不调参：第 2 轮调参后样本外反而更差（过拟合）；要调参用 RESEARCH_HYPEROPT=1"
+fi
+if [[ "$BENCHMARKS" == "1" ]]; then
+    HYPEROPT=0
+    HO_REASON="基准策略模式只用默认参数，不调参（RESEARCH_BENCHMARKS=1）"
 fi
 # 调参用哪个 python 跑（要套 timeout，不能直接用 _common.sh 里的 ft 函数）
 HO_PY=""
@@ -276,8 +341,8 @@ else
 fi
 
 # ---------- 调参并行进程数 ----------
-# 每个 hyperopt 子进程都要装一份全部K线（60 个币、约 2 年 10 个月的 1h/4h/1d：约 1 GB），主进程再要 0.5 ~ 1 GB。
-# 默认 = min(CPU 核数, (可用内存GB - 1) / 1.1)，至少 1；内存不够时子进程会被系统杀掉，那次调参就白跑了。
+# 每个 hyperopt 子进程都要装一份全部K线（60 个币的 1h/4h/1d：约 2 年 10 个月时约 1 GB，2021 年起约 6 年时约 2 GB），
+# 主进程再要 1 ~ 2 GB。默认 = min(CPU 核数, (可用内存GB - 1) / 2.2)，至少 1；内存不够时子进程会被系统杀掉，那次调参就白跑了。
 cpu_count() {
     local n
     n="$(nproc 2> /dev/null || getconf _NPROCESSORS_ONLN 2> /dev/null || sysctl -n hw.ncpu 2> /dev/null || echo 1)"
@@ -302,7 +367,7 @@ if [[ "$HYPEROPT" == "1" ]]; then
     MEM_JOBS=""
     if [[ "$MEM_MB" =~ ^[0-9]+$ && "$MEM_MB" -gt 0 ]]; then
         MEM_TXT="可用内存约 $(awk -v m="$MEM_MB" 'BEGIN {printf "%.1f", m / 1024}') GB"
-        MEM_JOBS=$(( (MEM_MB - 1024) / 1126 ))
+        MEM_JOBS=$(( (MEM_MB - 1024) / 2252 ))
         [[ "$MEM_JOBS" -ge 1 ]] || MEM_JOBS=1
     fi
     if [[ -z "$JOBS_N" ]]; then
@@ -311,9 +376,9 @@ if [[ "$HYPEROPT" == "1" ]]; then
         else
             JOBS_N=$(( CPUS < 2 ? CPUS : 2 ))  # 读不到内存：保守用 2 个
         fi
-        JOBS_INFO="并行 $JOBS_N 个进程（自动：CPU $CPUS 核，${MEM_TXT}，每个进程约需 1.1 GB）"
+        JOBS_INFO="并行 $JOBS_N 个进程（自动：CPU $CPUS 核，${MEM_TXT}，每个进程约需 2.2 GB）"
     elif [[ "$JOBS_N" == "-1" ]]; then
-        JOBS_INFO="并行 = 全部 $CPUS 个 CPU 核（按设置；${MEM_TXT}，每个进程约需 1.1 GB）"
+        JOBS_INFO="并行 = 全部 $CPUS 个 CPU 核（按设置；${MEM_TXT}，每个进程约需 2.2 GB）"
     else
         JOBS_INFO="并行 $JOBS_N 个进程（按设置；CPU $CPUS 核，${MEM_TXT}）"
     fi
@@ -342,23 +407,77 @@ fi
 if [[ "$HYPEROPT" == "1" && "$HO_PY" != "docker" && -z "$TIMEOUT_BIN" && "$HO_TIMEOUT" -gt 0 ]]; then
     say "          提示：系统里没有 timeout 命令（Mac 可以 brew install coreutils），调参只按轮数停，不按时间停"
 fi
-say "走步验证：${FOLDS} 折    手续费+滑点：$FEE/边    回撤上限：${MAX_DD}%    指标预热：每段最多 $WARMUP 根K线"
+if [[ "$FOLDS" -eq 0 ]]; then
+    WF_TXT="不做（--folds 0）"
+elif [[ "$WF_TEST_DAYS" -gt 0 ]]; then
+    WF_TXT="${FOLDS} 折（每折训练 ${WF_TRAIN_DAYS} 天 → 测试 ${WF_TEST_DAYS} 天）"
+else
+    WF_TXT="${FOLDS} 折（自动切分）"
+fi
+say "研究区间：从 ${START} 开始（上线晚的币要在样本外开始前有 ${MIN_TRAIN_DAYS} 天以上能交易的历史）    走步验证：$WF_TXT"
+if [[ -n "$SEEN_FROM" ]]; then
+    say "以前的研究看过的数据：${SEEN_FROM} 以后（第 2 轮）；在那之前的一段单独回测（没看过的一段，RESEARCH_SEEN_FROM）"
+fi
+say "手续费+滑点：$FEE/边    回撤上限：${MAX_DD}%（账户权益含浮亏；项目硬规则 ${EASYTRADE_DEFAULT_MAX_DD_PCT}%）    指标预热：每段最多 $WARMUP 根K线"
 say "结果目录：$RUN_DIR"
+
+# ---------- 策略代码从哪里读 ----------
+# 平时：user_data/strategies/*.py。基准策略模式（RESEARCH_BENCHMARKS=1）：再加上 benchmarks/ 和 vendor/ 里的 .py，
+# 先合到结果目录的 strategies/src/（分析策略信息、复制各参数版本都从这里拿），不改 user_data/strategies/ 本身
+STRAT_SRC_DIR="user_data/strategies"
+if [[ "$BENCHMARKS" == "1" ]]; then
+    if ! ls user_data/strategies/vendor/*.py > /dev/null 2>&1; then
+        say "!! 没有基准策略文件（user_data/strategies/vendor/ 里没有 .py）。先运行：bash scripts/fetch_benchmarks.sh（说明见 docs/benchmarks.md）"
+        exit 1
+    fi
+    STRAT_SRC_DIR="$RUN_DIR/strategies/src"
+    mkd "$STRAT_SRC_DIR"
+    cp user_data/strategies/*.py "$STRAT_SRC_DIR/"
+    for f in user_data/strategies/benchmarks/*.py user_data/strategies/vendor/*.py; do
+        [[ -f "$f" ]] || continue
+        if [[ -e "$STRAT_SRC_DIR/$(basename "$f")" ]]; then
+            say "!! $f 和别的策略文件同名（$(basename "$f")），没法放在一起，研究停止。把其中一个改名后再运行。"
+            exit 1
+        fi
+        cp "$f" "$STRAT_SRC_DIR/"
+    done
+    say "基准策略模式：策略代码 = user_data/strategies/ + benchmarks/ + vendor/（合在 $STRAT_SRC_DIR），只用默认参数"
+fi
 say ""
 
 # ---------- 1. 数据 ----------
-DL_TFS="$(py_ft scripts/research_report.py timeframes --strategies "$STRATEGIES" \
+DL_TFS="$(py_ft scripts/research_report.py timeframes --strategies "$STRATEGIES" --strategy-dir "$STRAT_SRC_DIR" \
     --timeframes "$TIMEFRAMES" --detail "$DETAIL" 2> /dev/null | tail -n 1 || true)"
 [[ -n "$DL_TFS" ]] || DL_TFS="$TIMEFRAMES"
 if [[ "$DOWNLOAD" == "1" ]]; then
-    say "=== 1/5 下载/更新数据：周期 $DL_TFS，从 $START 开始（$(elapsed)）"
-    say "    已有的数据只补新的；第一次下载 60 个币可能要 20~60 分钟。完整输出：$RUN_DIR/logs/download.log"
-    DL_ARGS=(--config "$CONFIG" --timeframes "$DL_TFS" --timerange "${START}-")
+    # 下载从"研究开始日期 - 最长的指标预热"开始（日线策略：max(300, RESEARCH_WARMUP_CANDLES) 根 = 约 600 天），
+    # 训练段第一天指标就是热的；交易所没有那么早的数据时有多少给多少（不报错）
+    DL_START="$(py_ft scripts/research_report.py timeframes --strategies "$STRATEGIES" --strategy-dir "$STRAT_SRC_DIR" \
+        --timeframes "$TIMEFRAMES" --detail "$DETAIL" --print download-start --start "$START" --warmup-candles "$WARMUP" 2> /dev/null | tail -n 1 || true)"
+    [[ "$DL_START" =~ ^[0-9]{8}$ ]] || DL_START="$START"
+    if [[ "$DL_START" != "$START" ]]; then
+        say "=== 1/5 下载/更新数据：周期 $DL_TFS，从 $DL_START 开始（$(elapsed)）"
+        say "    研究从 $START 开始；前面多下的这段只用来给指标预热（交易所没有那么早的数据就从有数据的那天开始）"
+    else
+        say "=== 1/5 下载/更新数据：周期 $DL_TFS，从 $START 开始（$(elapsed)）"
+    fi
+    say "    已有的数据只补新的；本地数据开始得比这个日期晚、又不是因为上线晚的币，会自动补前面那段（--prepend）。"
+    say "    下载前会先估算要多久（参考：60 个币第一次从 2021 年起下载约 30~45 分钟，以后更新几分钟）。完整输出：$RUN_DIR/logs/download.log"
+    DL_ARGS=(--config "$CONFIG" --timeframes "$DL_TFS" --timerange "${DL_START}-")
     if [[ -n "$DATADIR_ARG" ]]; then DL_ARGS+=(--datadir "$DATADIR_ARG"); fi
-    # 屏幕上每个币/周期只显示一行进度，完整输出在 logs/download.log
+    # 屏幕上每个币/周期只显示一行进度（带下载的日期段），加上下载脚本自己的提示行（"==> "、"  · " 开头）；
+    # 完整输出在 logs/download.log
     set +e
     bash scripts/download_okx_data.sh "${DL_ARGS[@]}" 2>&1 | tee "$RUN_DIR/logs/download.log" \
-        | awk -F'"' '/Download history data for/ { split($3, a, ","); sub(/ and store.*/, "", a[3]); printf "    下载 %s%s%s\n", $2, a[2], a[3]; fflush() }
+        | awk -F'"' '/Download history data for/ {
+                         split($3, a, ","); sub(/ and store.*/, "", a[3]); r = ""
+                         if (match($0, /From [^ ]+ to [^ ]+/)) {
+                             r = substr($0, RSTART + 5, RLENGTH - 5); sub(/ to /, " → ", r); gsub(/T00:00:00/, "", r)
+                             sub(/now$/, "现在", r); r = "（" r "）"
+                         }
+                         printf "    下载 %s%s%s%s\n", $2, a[2], a[3], r; fflush() }
+                     /^==> / { print "    " $0; fflush() }
+                     /^  · / { print "  " $0; fflush() }
                      / ERROR / { print "    " $0; fflush() }'
     DL_RC=${PIPESTATUS[0]}
     set -e
@@ -376,14 +495,19 @@ fi
 say ""
 
 # ---------- 2. 数据检查 + 区间切分 ----------
-say "=== 2/5 检查数据、去掉历史不够的币、切分区间（$(elapsed)）"
+say "=== 2/5 检查数据、去掉数据不够的币、切分区间（$(elapsed)）"
 SETTINGS="$(printf '{"max_dd": %s, "max_leverage": 5, "min_pf": %s, "min_trades": %s, "pf_ratio": %s, "fee": "%s", "hyperopt": %s, "hyperopt_reason": "%s", "epochs": %s, "loss": "%s", "seed": %s, "timeout": %s, "jobs": "%s", "detail": "%s", "hyperopt_gate": %s, "hyperopt_min_trades": %s, "runner": "%s"}' \
     "$MAX_DD" "$MIN_PF" "$MIN_TRADES" "$PF_RATIO" "${FEE/none/}" "$HYPEROPT" "$HO_REASON" "$EPOCHS" "$LOSS" "$SEED" \
     "$HO_TIMEOUT" "$JOBS_N" "$DETAIL" "$GATE" "$HO_MIN_TRADES" "$FT_RUNNER_RESOLVED")"
-PREP_ARGS=(prepare --config "$CONFIG" --run-dir "$RUN_DIR" --strategies "$STRATEGIES" --timeframes "$TIMEFRAMES"
-           --detail "$DETAIL" --start "$START" --folds "$FOLDS" --wf-train-ratio "$WF_RATIO" --wf-mode "$WF_MODE"
+# 子账户组合检查的设置也写进 plan.json（报告从这里读；Docker 里跑报告时环境变量传不进去）
+SETTINGS="${SETTINGS%\}}, \"portfolio\": \"$PORTFOLIO\", \"portfolio_weights\": \"$PORTFOLIO_WEIGHTS\"}"
+PREP_ARGS=(prepare --config "$CONFIG" --run-dir "$RUN_DIR" --strategies "$STRATEGIES" --strategy-dir "$STRAT_SRC_DIR"
+           --timeframes "$TIMEFRAMES"
+           --detail "$DETAIL" --start "$START" --min-train-days "$MIN_TRAIN_DAYS"
+           --folds "$FOLDS" --wf-train-days "$WF_TRAIN_DAYS" --wf-test-days "$WF_TEST_DAYS" --wf-train-ratio "$WF_RATIO" --wf-mode "$WF_MODE"
            --warmup-candles "$WARMUP" --settings "$SETTINGS")
 if [[ -n "$DATADIR_ARG" ]]; then PREP_ARGS+=(--datadir "$DATADIR_ARG"); fi
+if [[ -n "$SEEN_FROM" ]]; then PREP_ARGS+=(--seen-from "$SEEN_FROM"); fi
 if [[ "$SYNTHETIC" == "yes" ]]; then PREP_ARGS+=(--synthetic); fi
 if ! py_ft scripts/research_report.py "${PREP_ARGS[@]}" 2>&1 | sed 's/^/    /' | tee -a "$RUN_LOG"; then
     say "数据检查失败，研究没法继续（上面有原因）。"
@@ -410,14 +534,20 @@ k=1
 while [[ $k -le $WF_COUNT ]]; do VARIANT_DIRS="$VARIANT_DIRS wf$k"; k=$((k + 1)); done
 for v in $VARIANT_DIRS; do
     mkd "$RUN_DIR/strategies/$v"
-    cp user_data/strategies/*.py "$RUN_DIR/strategies/$v/"
+    cp "$STRAT_SRC_DIR"/*.py "$RUN_DIR/strategies/$v/"
 done
 
-# 每个策略的附加参数：保护机制、手续费、细节周期
+# 每个策略自己的研究设置（可选）：configs/research-overrides/<策略>.json，叠加在研究配置后面、只对这个策略生效
+STRAT_CFG_DIR="configs/research-overrides"
+strat_cfg() { if [[ -f "$STRAT_CFG_DIR/$1.json" ]]; then echo "$STRAT_CFG_DIR/$1.json"; fi; }
+
+# 每个策略的附加参数：保护机制、手续费、细节周期、这个策略自己的设置
 STRAT_ARGS=()
 strat_args() {
-    local dvar="S_${1}_DETAIL"
+    local dvar="S_${1}_DETAIL" scfg
+    scfg="$(strat_cfg "$1")"
     STRAT_ARGS=(--enable-protections)
+    if [[ -n "$scfg" ]]; then STRAT_ARGS+=(--config "$scfg"); fi
     if [[ "$FEE" != "none" ]]; then STRAT_ARGS+=(--fee "$FEE"); fi
     if [[ -n "${!dvar:-}" ]]; then STRAT_ARGS+=(--timeframe-detail "${!dvar}"); fi
 }
@@ -431,7 +561,7 @@ warm_args() {
     if [[ -f "$frag" ]]; then WARM_ARGS=(--config "$frag"); fi
 }
 
-# 用法：run_bt <策略> <default|opt> <train|test|wfN|wfNtrain> <timerange> <策略副本目录>
+# 用法：run_bt <策略> <default|opt> <train|test|holdout|wfN|wfNtrain> <timerange> <策略副本目录>
 run_bt() {
     local strat="$1" variant="$2" seg="$3" tr="$4" sdir="$5"
     local label="${strat}__${variant}__${seg}"
@@ -557,12 +687,24 @@ run_hyperopt() {
 
 # ---------- 3. 默认参数 ----------
 N_STRATS=$(echo $PLAN_STRATEGIES | wc -w | tr -d ' ')
-say "=== 3/5 默认参数回测：$N_STRATS 个策略 × （训练段 + 样本外 + 走步 $WF_COUNT 折）= $((N_STRATS * (2 + WF_COUNT))) 次（$(elapsed)）"
+N_SEG=$((2 + WF_COUNT))
+SEG_TXT="训练段 + 样本外 + 走步 $WF_COUNT 折"
+if [[ -n "${HOLDOUT_RANGE:-}" ]]; then N_SEG=$((N_SEG + 1)); SEG_TXT="训练段 + 没看过的一段 + 样本外 + 走步 $WF_COUNT 折"; fi
+say "=== 3/5 默认参数回测：$N_STRATS 个策略 × （${SEG_TXT}）= $((N_STRATS * N_SEG)) 次（$(elapsed)）"
 for STRAT in $PLAN_STRATEGIES; do
     strat_args "$STRAT"
     tfvar="S_${STRAT}_TF"
     say "--- $STRAT（周期 ${!tfvar:-?}）"
+    SCFG="$(strat_cfg "$STRAT")"
+    if [[ -n "$SCFG" ]]; then
+        SCFG_TXT="$(py_ft -c "import json, sys, rapidjson; d = rapidjson.loads(open(sys.argv[1], encoding='utf-8').read(), parse_mode=rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS); print('，'.join(f'{k} = {json.dumps(v, ensure_ascii=False)}' for k, v in d.items()))" "$SCFG" 2> /dev/null || true)"
+        say "    这个策略自己的设置：$SCFG（${SCFG_TXT:-读不出内容}），叠加在研究配置后面"
+        note "$STRAT" default "这个策略用了自己的研究设置 $SCFG（${SCFG_TXT:-见文件}），其他策略不受影响"
+    fi
     run_bt "$STRAT" default train "$TRAIN_RANGE" "$RUN_DIR/strategies/base"
+    if [[ -n "${HOLDOUT_RANGE:-}" ]]; then
+        run_bt "$STRAT" default holdout "$HOLDOUT_RANGE" "$RUN_DIR/strategies/base"
+    fi
     run_bt "$STRAT" default test "$TEST_RANGE" "$RUN_DIR/strategies/base"
     k=1
     while [[ $k -le $WF_COUNT ]]; do

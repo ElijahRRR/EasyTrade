@@ -19,7 +19,7 @@ VolSqueezeBreakout -- 波动收缩 (布林带缩进肯特纳通道, "squeeze") �
   离场  (1) 吊灯止损: 持仓以来最高价 (做空 = 最低价) -/+ trail_atr_mult x 入场 ATR, 只收紧
         (2) 突破失败: 收盘价回到布林中轨 (SMA20) 另一侧 -> 下一根开盘平仓
         (3) 超时: 持有满 max_hold_candles 根 (默认 72 根: 1h = 3 天, 4h = 12 天)
-  仓位  easytrade_risk: 每笔打到止损亏总资金 0.5%, 组合热度 <= 3%, 杠杆 <= 2 (硬上限 5)
+  仓位  easytrade_risk: 每笔打到止损亏总资金 1%, 组合热度 <= 6%, 杠杆 <= 2 (硬上限 5)
 
 可 hyperopt 的参数 4 个 (只在训练段调参): range_period / vol_ratio_min / stop_atr_mult / trail_atr_mult。
 周期: 默认 1h; 4h 用 --timeframe 4h (参数单位是 "根 K 线", 4h 是另一套系统, 要单独验证)。
