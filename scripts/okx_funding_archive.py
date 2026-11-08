@@ -52,7 +52,8 @@ OKX 资金费率历史归档导入（第 5 轮 XSFundingCarry 在 OKX 上跑用�
                        省得重新下载（复制，不用符号链接；已有的文件不碰）。
       --lister official（默认）：GET https://www.okx.com/api/v5/public/market-data-history（module=3 资金费、instType=SWAP、
                        instFamilyList 每次最多 5 个（OKX 文档写 10 个，2026-11-08 VPS 实测超过 5 个返回 code=50025；
-                       再遇到这个错误自动把这一批减半重试）、dateAggrType=monthly、每次 19 个月（接口上限 20，留一个月余量），
+                       再遇到这个错误自动把这一批减半重试）、dateAggrType=monthly、每次 6 个月（文档写 20 个月，2026-11-08 实测 19 个月
+                       返回 HTTP 400 code=50077 时间跨度太长；再遇到 50077 自动把月数减半重试），
                        begin / end 按北京时间（UTC+8）的月份写，和 OKX 归档分月的方式一样）。
       --lister priapi：社区脚本用过的旧列表接口 https://www.okx.com/priapi/v5/broker/public/orderRecord?path=cdn/okex/traderecords/swaprate/monthly/YYYYMM
                        （有人说它已经 404，只在官方接口不行时试）。
@@ -140,9 +141,15 @@ MODULE_FUNDING = "3"
 # 以后 OKX 再收紧，遇到 50025 自动减半重试（list_remote）
 MAX_FAMILIES = 5
 FAMILY_LIMIT_CODES = ("50025",)
-# 官方接口：dateAggrType=monthly 时最多 20 个月。每次只要 19 个月，留一个月余量
+# 官方接口：dateAggrType=monthly 时文档写最多 20 个月，可是 2026-11-08 在 VPS 上实测 19 个月返回
+# HTTP 400 code=50077 "The time interval between the start date and end date ..."，所以每次只要 6 个月；
+# 以后再遇到 50077 自动把月数减半重试（list_remote）。
 # （OKX 的归档按北京时间 UTC+8 分月，请求的起止也按 UTC+8 的月份写，见 _month_bounds_ms_cn）
-MAX_MONTHS = 19
+MAX_MONTHS = 6
+TIME_LIMIT_CODES = ("50077",)
+# OKX 的限速错误码（有时用 HTTP 200 / 400 带回来，不一定是 429）：等一会儿再试同一个请求
+RATE_LIMIT_CODES = ("50011", "50061")
+RATE_LIMIT_RETRIES = 4
 CN_OFFSET_MS = 8 * 3_600_000  # 北京时间比 UTC 早 8 小时
 MIN_INTERVAL = 0.5  # 两次请求之间至少隔这么多秒
 RETRIES = 4  # 网络出错重试次数（等 1、2、4、8 秒）
@@ -565,14 +572,15 @@ def _official_params(fam: list[str], mon: list[str], now_ms: int) -> dict[str, s
     }
 
 
-def _official_batches(families: list[str], months: list[str], max_families: int) -> list[tuple[list[str], list[str]]]:
-    return [(fam, mon) for fam in _chunks(sorted(families), max_families) for mon in _chunks(months, MAX_MONTHS)]
+def _official_batches(families: list[str], months: list[str], max_families: int,
+                      max_months: int = MAX_MONTHS) -> list[tuple[list[str], list[str]]]:
+    return [(fam, mon) for fam in _chunks(sorted(families), max_families) for mon in _chunks(months, max_months)]
 
 
 def official_requests(families: list[str], months: list[str], now_ms: int,
-                      max_families: int = MAX_FAMILIES) -> list[dict[str, str]]:
+                      max_families: int = MAX_FAMILIES, max_months: int = MAX_MONTHS) -> list[dict[str, str]]:
     reqs = []
-    for fam, mon in _official_batches(families, months, max_families):
+    for fam, mon in _official_batches(families, months, max_families, max_months):
         params = _official_params(fam, mon, now_ms)
         if params is not None:
             reqs.append(params)
@@ -583,13 +591,36 @@ def _is_family_limit(e: "ApiError") -> bool:
     return e.code in FAMILY_LIMIT_CODES or "instfamilylist" in e.api_msg.lower()
 
 
+def _is_time_limit(e: "ApiError") -> bool:
+    return e.code in TIME_LIMIT_CODES or "time interval" in e.api_msg.lower()
+
+
+def _is_rate_limit(e: "ApiError") -> bool:
+    return e.code in RATE_LIMIT_CODES or "too many requests" in e.api_msg.lower()
+
+
+def _api_error_from_http(e: "HttpStatus") -> "ApiError | None":
+    """HTTP 4xx 的返回里带 OKX 的 code / msg（例如 400 + code=50077）：变成 ApiError；不是这种 JSON 返回 None。"""
+    try:
+        doc = json.loads(e.body.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return None
+    if not (isinstance(doc, dict) and "code" in doc):
+        return None
+    code, api_msg = str(doc.get("code")), str(doc.get("msg") or "")
+    if code in ("0", "", "None", "200"):
+        return None
+    return ApiError(f"OKX 返回错误：HTTP {e.status}，code={code} msg={api_msg!r}", code=code, api_msg=api_msg, seen=e.body)
+
+
 def list_remote(http: Http, lister: str, families: list[str], months: list[str], now_ms: int) -> list[FileEntry]:
     entries: dict[str, FileEntry] = {}
     if lister == "official":
-        cap = MAX_FAMILIES
-        queue = _official_batches(families, months, cap)
-        print(f"列出归档文件：官方接口，约 {len(queue)} 次请求（每次最多 {cap} 个币、{MAX_MONTHS} 个月）")
+        cap, mcap = MAX_FAMILIES, MAX_MONTHS
+        queue = _official_batches(families, months, cap, mcap)
+        print(f"列出归档文件：官方接口，约 {len(queue)} 次请求（每次最多 {cap} 个币、{mcap} 个月）")
         i = 0
+        rl_tries = 0
         while queue:
             fam, mon = queue.pop(0)
             params = _official_params(fam, mon, now_ms)
@@ -597,27 +628,47 @@ def list_remote(http: Http, lister: str, families: list[str], months: list[str],
                 continue
             i += 1
             try:
-                raw = http.get(OFFICIAL_URL, params)
-            except HttpStatus as e:
-                raise FormatError(f"列表接口返回 HTTP {e.status}：{e.url}", seen=e.body) from None
-            try:
+                try:
+                    raw = http.get(OFFICIAL_URL, params)
+                except HttpStatus as e:
+                    api = _api_error_from_http(e)
+                    if api is None:
+                        raise FormatError(f"列表接口返回 HTTP {e.status}：{e.url}", seen=e.body) from None
+                    raise api from None
                 got = parse_official_listing(raw)
             except ApiError as e:
-                if not (_is_family_limit(e) and len(fam) > 1):
-                    raise
-                # OKX 嫌一次的币太多（code=50025）：这一批和后面还没发的都按一半重新分批
-                cap = max(1, len(fam) // 2)
-                print(f"  · 第 {i} 次：OKX 说 instFamilyList 太多（code={e.code}，这一批 {len(fam)} 个币），"
-                      f"改成每次最多 {cap} 个币重试")
-                rest = [(fam, mon)] + queue
-                queue = [(f2, m2) for f1, m2 in rest for f2 in _chunks(f1, cap)]
-                continue
+                if _is_family_limit(e) and len(fam) > 1:
+                    # OKX 嫌一次的币太多（code=50025）：这一批和后面还没发的都按一半重新分批
+                    cap = max(1, len(fam) // 2)
+                    print(f"  · 第 {i} 次：OKX 说 instFamilyList 太多（code={e.code}，这一批 {len(fam)} 个币），"
+                          f"改成每次最多 {cap} 个币重试")
+                    rest = [(fam, mon)] + queue
+                    queue = [(f2, m2) for f1, m2 in rest for f2 in _chunks(f1, cap)]
+                    continue
+                if _is_rate_limit(e) and rl_tries < RATE_LIMIT_RETRIES:
+                    # OKX 限速（code=50011 等）：等 2、4、8、16 秒再试同一个请求
+                    rl_tries += 1
+                    wait = float(2 ** rl_tries)
+                    print(f"  · 第 {i} 次：OKX 限速（code={e.code}），{wait:.0f} 秒后重试（第 {rl_tries}/{RATE_LIMIT_RETRIES} 次）")
+                    http._sleep(wait)
+                    queue.insert(0, (fam, mon))
+                    continue
+                if _is_time_limit(e) and len(mon) > 1:
+                    # OKX 嫌起止时间隔得太长（code=50077）：这一批和后面还没发的都按一半的月数重新分批
+                    mcap = max(1, len(mon) // 2)
+                    print(f"  · 第 {i} 次：OKX 说起止时间隔得太长（code={e.code}，这一批 {len(mon)} 个月），"
+                          f"改成每次最多 {mcap} 个月重试")
+                    rest = [(fam, mon)] + queue
+                    queue = [(f1, m2) for f1, m1 in rest for m2 in _chunks(m1, mcap)]
+                    continue
+                raise
+            rl_tries = 0
             if not got:
                 print(f"  · 第 {i} 次：没有文件（{params['instFamilyList'][:60]}…，"
                       f"{_iso(int(params['begin']))[:7]} ~ {_iso(int(params['end']))[:7]}）")
             for e in got:
                 entries.setdefault(e.url, e)
-        print(f"  列表请求共 {i} 次（最后每次最多 {cap} 个币）")
+        print(f"  列表请求共 {i} 次（最后每次最多 {cap} 个币、{mcap} 个月）")
     else:
         print(f"列出归档文件：旧的 priapi 接口，{len(months)} 次请求（每个月一次）")
         for mon in months:

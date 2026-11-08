@@ -5,7 +5,7 @@ scripts/okx_funding_archive.py（OKX 资金费历史归档导入）的离线自�
   1. CSV 列名的各种写法（不分大小写、驼峰、BOM）、"实际结算的费率"优先、只有 funding_rate 时的警告、认不出的表头 -> 退出码 3
   2. 时间格式：秒 / 毫秒 / 微秒整数、ISO 字符串（带时区 / 不带时区）；结算时间取整到分钟，和 freqtrade 从接口下载时完全一样
   3. 只留配置里的币的 USDT 永续（BTC-USDT-SWAP），币本位、交割合约、别的币都不要；没有合约列时按文件名认
-  4. 列表接口的返回（OKX 没有公开写清楚格式）：几种可能的样子、错误码、旧的 priapi 列表；请求按 5 个币 / 19 个月分批；OKX 返回 code=50025（币太多）时自动减半重试
+  4. 列表接口的返回（OKX 没有公开写清楚格式）：几种可能的样子、错误码、旧的 priapi 列表；请求按 5 个币 / 6 个月分批；OKX 返回 code=50025（币太多）/ 50077（时间跨度太长，HTTP 400）时自动减半重试
   5. 联网模式（假的 HTTP 层，不联网）：缓存、重下时不再下载、两次请求至少隔 0.5 秒、重试、网络出错 -> 退出码 2 而且数据不动
   6. 合并：本地已有的行优先；重叠的行对不上（> 1%）-> overlap_mismatch
   7. 标记价格替身：只补第一根真实标记价格之前的时间点，从不覆盖真实的；再跑一次不会多补；--no-mark-substitute
@@ -303,20 +303,21 @@ def test_listing() -> None:
     reqs = ofa.official_requests(fams, months, ms("2026-11-08"))
     nf = [len(r["instFamilyList"].split(",")) for r in reqs]
     spans = [(int(r["end"]) - int(r["begin"])) for r in reqs]
-    check("60 个币 × 57 个月 -> 36 次请求，每次最多 5 个币（OKX 实测上限，文档写 10）", (len(reqs), max(nf), len(months)), (36, 5, 57))
+    check("60 个币 × 57 个月 -> 120 次请求，每次最多 5 个币（OKX 实测上限，文档写 10）", (len(reqs), max(nf), len(months)), (120, 5, 57))
     cn = timedelta(hours=8)  # OKX 归档按北京时间分月：请求的起止也按北京时间的月份写
-    check("每次 19 个月（接口上限 20，留一个月余量；按北京时间的月份数算）",
+    check("每次最多 6 个月（文档写 20 个月，实测 19 个月返回 50077；按北京时间的月份数算）",
           max(len(ofa._months(datetime.fromtimestamp(int(r["begin"]) / 1000, UTC) + cn,
-                              datetime.fromtimestamp(int(r["end"]) / 1000, UTC) + cn)) for r in reqs), 19)
+                              datetime.fromtimestamp(int(r["end"]) / 1000, UTC) + cn)) for r in reqs), 6)
     check("参数：module=3、instType=SWAP、dateAggrType=monthly", {(r["module"], r["instType"], r["dateAggrType"]) for r in reqs},
           {("3", "SWAP", "monthly")})
     check("第一次从北京时间 2022-03-01 00:00（= UTC 2022-02-28 16:00）开始，最后一次到现在为止",
           (int(reqs[0]["begin"]), max(int(r["end"]) for r in reqs)), (ms("2022-02-28 16:00"), ms("2026-11-08")))
     b2 = sorted({int(r["begin"]) for r in reqs})
-    check("后面几次也从北京时间的月初开始（2023-10、2025-05 = UTC 前一天 16:00）", b2[1:],
-          [ms("2023-09-30 16:00"), ms("2025-04-30 16:00")])
+    check("后面几次也从北京时间的月初开始（2022-09、2023-03 …… 2026-09 = UTC 前一天 16:00）", b2[1:],
+          [ms(f"{d} 16:00") for d in ("2022-08-31", "2023-02-28", "2023-08-31", "2024-02-29", "2024-08-31",
+                                      "2025-02-28", "2025-08-31", "2026-02-28", "2026-08-31")])
     e1 = sorted({int(r["end"]) for r in reqs})[0]
-    check("每次结束在北京时间的月底（UTC 那天 15:59:59.999），和下一次接上", (e1, e1 + 1 == b2[1]), (ms("2023-09-30 16:00") - 1, True))
+    check("每次结束在北京时间的月底（UTC 那天 15:59:59.999），和下一次接上", (e1, e1 + 1 == b2[1]), (ms("2022-08-31 16:00") - 1, True))
     check_true("开始 <= 结束", all(s > 0 for s in spans))
 
 
@@ -516,10 +517,81 @@ def test_family_limit() -> None:
     check("数据目录一个字节都不变", sha_tree(dd2), before)
 
     # 别的错误码不重试
-    other = json.dumps({"code": "50011", "msg": "Too Many Requests", "data": []}).encode()
+    other = json.dumps({"code": "51000", "msg": "Parameter instType error", "data": []}).encode()
     h3 = FakeHttp(_listing_route(files2, lambda u: (200, other) if u.startswith(ofa.OFFICIAL_URL) else None))
     rc, _ = run(["update", NA, "--config", str(cfg2), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], h3)
-    check("别的错误码（50011）不减半重试：1 次请求、退出码 3", (rc, h3.requests), (3, 1))
+    check("别的错误码（51000 参数错误）不重试：1 次请求、退出码 3", (rc, h3.requests), (3, 1))
+
+
+def test_time_limit() -> None:
+    print("5c. OKX 嫌起止时间隔得太长（HTTP 400 + code=50077）：自动把月数减半重试；币太多的 50025 用 HTTP 400 返回也认得")
+    root = TMP / "timelimit"
+    dd, cfg, files, btc, eth = _net_fixture(root)
+    store(dd, "BTC/USDT:USDT", btc.iloc[-20:].reset_index(drop=True), FR)
+    store(dd, "ETH/USDT:USDT", eth.iloc[-20:].reset_index(drop=True), FR)
+    seen: list[tuple[int, int]] = []
+    t_err = json.dumps({"code": "50077", "msg": "The time interval between the start date and end date cannot exceed 1 months",
+                        "data": []}).encode()
+    f_err = json.dumps({"code": "50025", "msg": "Number of instFamilyList values exceeds the maximum limit 1", "data": []}).encode()
+    cn = timedelta(hours=8)
+
+    def limit(url: str) -> tuple[int, bytes] | None:
+        if url.startswith(ofa.OFFICIAL_URL):
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+            n = len(q["instFamilyList"].split(","))
+            nm = len(ofa._months(datetime.fromtimestamp(int(q["begin"]) / 1000, UTC) + cn,
+                                 datetime.fromtimestamp(int(q["end"]) / 1000, UTC) + cn))
+            seen.append((n, nm))
+            if nm > 1:
+                return 400, t_err
+            if n > 1:
+                return 400, f_err
+        return None
+
+    http = FakeHttp(_listing_route(files, limit))
+    rc, out = run(["update", NA, "--config", str(cfg), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], http)
+    check("退出码 0（2 个月一批被拒，减成 1 个月；2 个币一批被拒，减成 1 个币）", rc, 0)
+    check("列表请求：(2 币, 2 月) 被拒 → (2 币, 1 月) 被拒 → 1 币 1 月 × 4", seen, [(2, 2), (2, 1), (1, 1), (1, 1), (1, 1), (1, 1)])
+    check_true("屏幕上说明了为什么重试", "code=50077" in out and "每次最多 1 个月" in out and "code=50025" in out, out[-800:])
+    got = load(dd, "ETH/USDT:USDT", FR)
+    check("ETH 资金费 = 归档里的全部", (len(got), np.array_equal(got["funding_rate"].to_numpy(), eth["funding_rate"].to_numpy())),
+          (len(eth), True))
+
+    # 1 个月也被拒 -> 退出码 3、数据不动；HTTP 400 不是 OKX 的 JSON -> 退出码 3
+    root2 = TMP / "timelimit_one"
+    dd2, cfg2, files2, btc2, eth2 = _net_fixture(root2)
+    store(dd2, "BTC/USDT:USDT", btc2.iloc[-20:].reset_index(drop=True), FR)
+    store(dd2, "ETH/USDT:USDT", eth2.iloc[-20:].reset_index(drop=True), FR)
+    before = sha_tree(dd2)
+    h2 = FakeHttp(_listing_route(files2, lambda u: (400, t_err) if u.startswith(ofa.OFFICIAL_URL) else None))
+    rc, _ = run(["update", NA, "--config", str(cfg2), "--start", "20230101", "--end", "20230131", "--no-mark-substitute"], h2)
+    check("1 个月也被拒 -> 退出码 3，只请求 1 次", (rc, h2.requests), (3, 1))
+    check("数据目录一个字节都不变", sha_tree(dd2), before)
+    h3 = FakeHttp(_listing_route(files2, lambda u: (400, b"<html>bad request</html>") if u.startswith(ofa.OFFICIAL_URL) else None))
+    rc, _ = run(["update", NA, "--config", str(cfg2), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], h3)
+    check("HTTP 400 但不是 OKX 的 JSON -> 退出码 3，只请求 1 次", (rc, h3.requests), (3, 1))
+
+    # 限速（code=50011，HTTP 200 带回来）：等一会儿再试同一个请求，最多 4 次；一直限速 -> 退出码 3
+    rl = json.dumps({"code": "50011", "msg": "Too Many Requests", "data": []}).encode()
+    left = [2]
+
+    def ratelimited(url: str) -> tuple[int, bytes] | None:
+        if url.startswith(ofa.OFFICIAL_URL) and left[0] > 0:
+            left[0] -= 1
+            return 200, rl
+        return None
+
+    root3 = TMP / "ratelimit"
+    dd3, cfg3, files3, btc3, eth3 = _net_fixture(root3)
+    store(dd3, "BTC/USDT:USDT", btc3.iloc[-20:].reset_index(drop=True), FR)
+    store(dd3, "ETH/USDT:USDT", eth3.iloc[-20:].reset_index(drop=True), FR)
+    h4 = FakeHttp(_listing_route(files3, ratelimited))
+    rc, out = run(["update", NA, "--config", str(cfg3), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], h4)
+    check("限速 2 次以后成功：退出码 0，等了 2、4 秒", (rc, [x for x in h4.sleeps if x >= 2]), (0, [2.0, 4.0]))
+    check_true("屏幕上说明了限速重试", "code=50011" in out, out[-400:])
+    h5 = FakeHttp(_listing_route(files3, lambda u: (200, rl) if u.startswith(ofa.OFFICIAL_URL) else None))
+    rc, _ = run(["update", NA, "--config", str(cfg3), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], h5)
+    check("一直限速：重试 4 次后退出码 3（列表请求 5 次）", (rc, h5.requests), (3, 5))
 
 
 def test_merge() -> None:
@@ -1347,6 +1419,7 @@ def main() -> int:
             test_listing()
             test_network()
             test_family_limit()
+            test_time_limit()
             test_merge()
             test_mark()
             test_idempotent()
