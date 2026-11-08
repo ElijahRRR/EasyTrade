@@ -8,9 +8,14 @@ XSFundingCarry -- 资金费截面套息 (Cross-Sectional Funding Carry), 多空�
       做多资金费最低的永续 (空头拥挤 / 费率为负, 多头收钱), 收的是 "给加杠杆的人提供杠杆" 的报酬;
       多空两边名义金额相同, 大盘涨跌大致抵消。
 
-数据: 只用币安 U 本位合约 (configs/config.binance-research.json + pairs.binance-research.json, 60 个币),
-      1d K 线 + 1h 标记价格 + 资金费率 (freqtrade 的 K 线类型 funding_rate, 每次结算一行: date + funding_rate)。
-      OKX 只有最近约 3 个月资金费, 测不了这个策略; 币安的数据只能在币安服务地区的服务器上下载和回测。
+数据: 1d K 线 + 1h 标记价格 + 资金费率 (freqtrade 的 K 线类型 funding_rate, 每次结算一行: date + funding_rate)。
+      研究 (2026-11-08 起, David 的决定, 在任何真实数据回测之前; docs/round5-preregistration.md 6.5 节):
+      在美国 VPS 上用 OKX USDT 永续 (configs/config.okx-research-funding.json + pairs.okx-research.json, 60 个币),
+      单独的数据目录 user_data/data/okx-funding (freqtrade 不读配置里的 datadir, 研究脚本会加 --datadir)。
+      OKX 接口只给最近约 3 个月的资金费, 更早的用 OKX 官方历史归档 (2022-03 起, scripts/okx_funding_archive.py 导入),
+      所以研究从 2022-04-01 开始、没有 2020 留出段; OKX 也只有最近约 3 个月的标记价格, 更早的用同一个币的 1h 合约K线代替
+      (只影响资金费金额, 约 0.1%)。模拟盘 / 实盘仍然打算在币安上跑: 上实盘之前要用币安数据回测或币安模拟盘复核
+      (configs/config.binance-research.json + pairs.binance-research.json)。
 
 规则 (每个调仓日按当时的数据算; 调仓时刻 T = 周一 00:00 UTC; 信号K线 = 周日那根日线, 它在 T 收盘):
   币池  先选 "至少 60 根日K线 (min_daily_candles)" 而且 "T 之前 7 天资金费记录完整" 的币,

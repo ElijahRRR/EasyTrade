@@ -335,7 +335,9 @@ def cmd_prepare(a: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     cfg = load_from_files([a.config])
     exch = str((cfg.get("exchange") or {}).get("name") or "")
-    datadir = Path(a.datadir) if a.datadir else Path("user_data") / "data" / exch
+    # --datadir > 配置里的 "datadir"（freqtrade 本身不读这一项；例如 config.okx-research-funding.json）> user_data/data/<交易所>
+    datadir = Path(a.datadir) if a.datadir else (
+        Path(str(cfg["datadir"])) if cfg.get("datadir") else Path("user_data") / "data" / exch)
     mode = str(cfg.get("trading_mode") or "spot")
     fmt = str(cfg.get("dataformat_ohlcv") or "feather")
     whitelist = list((cfg.get("exchange") or {}).get("pair_whitelist") or [])
@@ -2342,7 +2344,11 @@ def _round5_tables(plan: dict[str, Any], rows: list[dict[str, Any]]) -> list[str
     L.extend(_text_table(headers, body))
     L.append("  （资金费 = 这一段所有交易的 funding_fees 合计，USDT，正数 = 收到、负数 = 付出；每段回测都从 1000 USDT 开始，"
              "走步 = 各折直接相加；全期 = 训练段 + 样本外。")
-    if str(plan.get("exchange") or "okx").lower() == "okx":
+    if str(plan.get("exchange") or "okx").lower() == "okx" and str(s.get("funding_archive") or "0") == "okx":
+        # 2026-11-08 起：XSFundingCarry 用 OKX 官方资金费历史归档（scripts/okx_funding_archive.py），只改说明文字
+        L.append("   这次用了 OKX 资金费历史归档（2022-03 起，加上接口的最近约 3 个月），更早的标记价格用合约K线补；"
+                 "第一条资金费之前的持仓 funding_fees 是 0（见 data_check.txt 第 3 节）。")
+    elif str(plan.get("exchange") or "okx").lower() == "okx":
         L.append("   OKX 只有最近约 3 个月的资金费率，更早的持仓 funding_fees 是 0，所以 OKX 的\"资金费为 0\"占比一般很高。")
     L.append("   每币每年交易 = 交易数 ÷ 能交易的币在这一段里能交易的时间合计（年；第一根K线 + 预热之后才算）；"
              "交易数按登记表的口径（例如不数 hedge 对冲腿）。")
@@ -2502,7 +2508,14 @@ def render(plan: dict[str, Any], rows: list[dict[str, Any]], stage: str, prereg:
     firsts = [v for v in funding_first_dates(plan).values() if v is not None] if plan.get("trading_mode") == "futures" else []
     if plan.get("trading_mode") == "futures":
         ff = datetime.fromtimestamp(min(firsts), tz=timezone.utc).date().isoformat() if firsts else None
-        if str(plan.get("exchange") or "okx").lower() == "okx":
+        if str(plan.get("exchange") or "okx").lower() == "okx" and str(s.get("funding_archive") or "0") == "okx":
+            # 2026-11-08 起：XSFundingCarry 用 OKX 官方资金费历史归档（scripts/okx_funding_archive.py），只改说明文字
+            L.append(
+                f"资金费：OKX 官方资金费历史归档（2022-03 起）+ 接口的最近约 3 个月（这次数据里最早的一条在 {ff or '（没有资金费数据）'}），"
+                "在那之前持仓的资金费按 0 算；OKX 只有最近约 3 个月的标记价格，更早的用同一个币的 1h 合约K线补"
+                "（每个币补了多少、归档和接口对不对得上：data_check.txt 第 3 节、结果目录 funding_archive/manifest.json）；"
+            )
+        elif str(plan.get("exchange") or "okx").lower() == "okx":
             L.append(
                 f"资金费：OKX 只能下载最近约 3 个月的资金费率（这次数据里最早的一条在 {ff or '（没有资金费数据）'}），"
                 "在那之前持仓的资金费按 0 算，拿得久的趋势策略会显得偏好；"

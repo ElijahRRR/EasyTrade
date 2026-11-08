@@ -41,7 +41,7 @@
 #                        2026-11-07 起 15%，第 1、2 轮是按 8% 判的；用的值写进 plan.json，以后重新出报告仍按它判。
 #                        按别的上限重新判一次已经跑完的结果，不重跑回测：
 #                        .venv/bin/python scripts/research_report.py report --run-dir <结果目录> --max-dd 12）
-#   --datadir DIR        K线数据目录（RESEARCH_DATADIR，默认 user_data/data/<交易所>）
+#   --datadir DIR        K线数据目录（RESEARCH_DATADIR，默认 = 研究配置里的 "datadir"，没写就是 user_data/data/<交易所>）
 #   --synthetic          用合成数据离线跑（只检查流程；配置文件名含 synthetic 时也自动进入这个模式）。
 #                        数据目录默认按配置里的交易所：OKX = user_data/data/okx-synthetic，币安 = user_data/data/binance-synthetic
 #                        （没有就自动生成；要研究第 5 轮的新策略、或打开下面第 5 轮的开关时，旧版合成数据会自动重新生成）
@@ -67,6 +67,15 @@
 #                        生成新币上线日文件 user_data/listings/<数据目录名>_first_candle.json（副本和 sha256 记在结果目录）
 #   RESEARCH_FUNDING_CHECK（auto / 0 / 1；auto = 策略里有 XSFundingCarry 时）：数据检查里报告每个币的资金费条数、起止日期、
 #                        结算间隔，以及资金费和标记价格同一时刻都有的比例
+#   --funding-archive okx|0  OKX 资金费历史归档（RESEARCH_FUNDING_ARCHIVE；默认 auto = 策略里有 XSFundingCarry、配置的交易所是 OKX、
+#                        又不是合成数据时 = okx，否则 0）。2026-11-08 起（David 决定 XSFundingCarry 改在 OKX 上测）：
+#                        okx = 第 1 步下载之后运行 scripts/okx_funding_archive.py update，把 OKX 官方归档里 2022-03 起的资金费率导入数据目录、
+#                        更早的标记价格用 1h 合约K线代替（只用单独的数据目录，例如 configs/config.okx-research-funding.json 的
+#                        user_data/data/okx-funding；数据目录是 user_data/data/okx 时拒绝）；--no-download 时不动数据，
+#                        但数据目录里必须已经有 okx_funding_archive/manifest.json。manifest 的副本和 sha256 记在结果目录。
+#                        合成数据不导入（合成数据自己带资金费）。值记进 plan.json，和登记表的 run_settings 对照
+#   研究配置里写了 "datadir"（例如 config.okx-research-funding.json）、又没有写 --datadir 时，用配置里的数据目录
+#   （freqtrade 2026.10 自己不读这一项，研究脚本把它转成 --datadir 传给 freqtrade 和各个检查脚本）
 #   研究配置里的交易对写成正则（例如 configs/config.okx-research-listings.json 的"OKX 全部 USDT 永续"）时，按本地有K线的合约展开
 #   （freqtrade 回测只按交易所现在还有的合约展开正则）。币安：--config configs/config.binance-research.json（只能在币安服务的地区运行），
 #   合约模式下资金费率和标记价格自动按整个下载区间一起下载。
@@ -93,7 +102,8 @@
 # 做的事：
 #   0. 预注册检查（scripts/check_prereg.py，见上面 --prereg）：登记过的策略文件和登记表不一致就停止，一次回测都不跑
 #   1. 下载/更新数据（scripts/download_okx_data.sh，周期 1h 4h 1d，合约模式自动带 funding_rate 和 mark；
-#      本地数据比开始日期晚的币自动用 --prepend 补前面那段；--with-spot 时另外下载现货 1h）
+#      本地数据比开始日期晚的币自动用 --prepend 补前面那段；--with-spot 时另外下载现货 1h；
+#      --funding-archive okx 时再用 scripts/okx_funding_archive.py 导入 OKX 官方归档里 2022-03 起的资金费率）
 #   2. 检查数据，去掉数据不够的币（中途断了的、样本外开始前能交易的历史不到 RESEARCH_MIN_TRAIN_DAYS 天的），
 #      实际用的币写到结果目录的 pairs.effective.json；data_check.txt 里列出每个币每一段从哪天开始能交易。切分区间：
 #      训练段 = 前约 2/3，样本外 = 后约 1/3；走步验证 = 从数据末尾往前排 K 折，每折先训练 365 天、再测后面没见过的 180 天；
@@ -167,6 +177,8 @@ PRE_HOLDOUT_PAIRS="${RESEARCH_PRE_HOLDOUT_PAIRS:-}"
 LISTINGS="${RESEARCH_LISTINGS:-auto}"
 FUNDING_CHECK="${RESEARCH_FUNDING_CHECK:-auto}"
 DATA_CHECK_ONLY="${RESEARCH_DATA_CHECK_ONLY:-0}"
+# 2026-11-08 起：OKX 资金费历史归档（见上面 --funding-archive；auto 按策略、交易所、是不是合成数据定）
+FUNDING_ARCHIVE="${RESEARCH_FUNDING_ARCHIVE:-auto}"
 
 while [[ $# -gt 0 ]]; do
     VAL="${2:-}"
@@ -197,6 +209,7 @@ while [[ $# -gt 0 ]]; do
         --pre-holdout)  PRE_HOLDOUT="$VAL"; shift 2 ;;
         --pre-holdout-pairs) PRE_HOLDOUT_PAIRS="$VAL"; shift 2 ;;
         --data-check-only) DATA_CHECK_ONLY=1; shift ;;
+        --funding-archive) FUNDING_ARCHIVE="$VAL"; shift 2 ;;
         -h|--help)      sed -n '2,/^# -----/p' "$0"; exit 0 ;;
         *)              echo "未知参数：$1（看 bash scripts/research.sh --help）" >&2; exit 1 ;;
     esac
@@ -268,6 +281,7 @@ PORTFOLIO_RE='^[A-Za-z0-9_, ]*$'
 [[ "$WITH_SPOT" =~ ^(auto|0|1)$ ]] || bad_arg "RESEARCH_WITH_SPOT 只能是 auto、0 或 1（收到：$WITH_SPOT）"
 [[ "$LISTINGS" =~ ^(auto|0|1)$ ]] || bad_arg "RESEARCH_LISTINGS 只能是 auto、0 或 1（收到：$LISTINGS）"
 [[ "$FUNDING_CHECK" =~ ^(auto|0|1)$ ]] || bad_arg "RESEARCH_FUNDING_CHECK 只能是 auto、0 或 1（收到：$FUNDING_CHECK）"
+[[ "$FUNDING_ARCHIVE" =~ ^(auto|okx|0)$ ]] || bad_arg "--funding-archive / RESEARCH_FUNDING_ARCHIVE 只能是 auto、okx 或 0（收到：$FUNDING_ARCHIVE）"
 [[ -n "$PREREG" ]] || bad_arg "--prereg 不能为空（默认 configs/preregistration.json）"
 case "$PRE_HOLDOUT" in none|NONE|0) PRE_HOLDOUT="" ;; esac
 if [[ -n "$PRE_HOLDOUT" ]]; then
@@ -287,17 +301,56 @@ has_strategy() { case " $(echo $STRATEGIES) " in *" $1 "*) return 0 ;; esac; ret
 if [[ "$WITH_SPOT" == "auto" ]]; then if has_strategy PremiumFade; then WITH_SPOT=1; else WITH_SPOT=0; fi; fi
 if [[ "$LISTINGS" == "auto" ]]; then if has_strategy NewListingShortHedged; then LISTINGS=1; else LISTINGS=0; fi; fi
 if [[ "$FUNDING_CHECK" == "auto" ]]; then if has_strategy XSFundingCarry; then FUNDING_CHECK=1; else FUNDING_CHECK=0; fi; fi
-# 合成数据：数据目录按配置里的交易所（币安的合成数据单独一个目录，带完整的资金费率和标记价格）
-SYN_GEN_ARGS=()
-if [[ "$SYNTHETIC" == "yes" && -z "$DATADIR_ARG" ]]; then
-    CFG_EXCHANGE="$(py_ft -c "import sys
+# 研究配置里的交易所和 "datadir"（一行，用 tab 分开；读不出来 = 空）。
+# freqtrade 2026.10 自己不读配置里的 "datadir"（只认 --datadir），所以下面没写 --datadir 时把它转成 --datadir 传下去
+CFG_INFO="$(py_ft -c "import sys
 from freqtrade.configuration.load_config import load_from_files
-print(str((load_from_files([sys.argv[1]]).get('exchange') or {}).get('name') or '').lower())" "$CONFIG" 2> /dev/null | tail -n 1 || true)"
+c = load_from_files([sys.argv[1]])
+print(str((c.get('exchange') or {}).get('name') or '-').lower() + '\t' + str(c.get('datadir') or '-'))" "$CONFIG" 2> /dev/null | tail -n 1 || true)"
+CFG_EXCHANGE=""
+CFG_DATADIR=""
+IFS=$'\t' read -r CFG_EXCHANGE CFG_DATADIR <<< "$CFG_INFO" || true
+[[ "$CFG_EXCHANGE" != "-" ]] || CFG_EXCHANGE=""
+[[ "$CFG_DATADIR" != "-" ]] || CFG_DATADIR=""
+# 合成数据：数据目录按配置里的交易所（币安的合成数据单独一个目录，带完整的资金费率和标记价格）；配置里的 "datadir" 不用
+SYN_GEN_ARGS=()
+DATADIR_FROM_CFG=0
+if [[ "$SYNTHETIC" == "yes" && -z "$DATADIR_ARG" ]]; then
     if [[ "$CFG_EXCHANGE" == binance* ]]; then
         DATADIR_ARG="user_data/data/binance-synthetic"
         SYN_GEN_ARGS=(--exchange binance)
     else
         DATADIR_ARG="user_data/data/okx-synthetic"
+    fi
+elif [[ -z "$DATADIR_ARG" && -n "$CFG_DATADIR" ]]; then
+    DATADIR_ARG="$CFG_DATADIR"
+    DATADIR_FROM_CFG=1
+fi
+# 实际用的数据目录（和 freqtrade 的默认一样：没写 = user_data/data/<交易所>）
+EFF_DATADIR="${DATADIR_ARG:-user_data/data/${CFG_EXCHANGE:-okx}}"
+# 同一个目录写成相对项目根目录的样子（去掉 ./、末尾的 /）：记进运行设置 datadir，和登记表对照
+# （XSFundingCarry 登记了 user_data/data/okx-funding：正式运行不能用 --datadir / RESEARCH_DATADIR 换成别的目录）
+EFF_DATADIR_REL="$(plain_py -c 'import os, sys; print(os.path.relpath(os.path.abspath(sys.argv[1])))' "$EFF_DATADIR" 2> /dev/null || echo "$EFF_DATADIR")"
+
+# OKX 资金费历史归档（--funding-archive）：auto = 策略里有 XSFundingCarry、交易所是 OKX、又不是合成数据
+case "$CFG_EXCHANGE" in okx|myokx|okxus) CFG_IS_OKX=1 ;; *) CFG_IS_OKX=0 ;; esac
+if [[ "$FUNDING_ARCHIVE" == "auto" ]]; then
+    if has_strategy XSFundingCarry && [[ "$CFG_IS_OKX" == "1" && "$SYNTHETIC" != "yes" ]]; then FUNDING_ARCHIVE=okx; else FUNDING_ARCHIVE=0; fi
+fi
+FA_TOOL="scripts/okx_funding_archive.py"
+FA_MANIFEST="$EFF_DATADIR/okx_funding_archive/manifest.json"
+if [[ "$FUNDING_ARCHIVE" == "okx" ]]; then
+    [[ "$CFG_IS_OKX" == "1" ]] || bad_arg "--funding-archive okx 只能用在 OKX 的研究配置上（$CONFIG 的交易所是 ${CFG_EXCHANGE:-读不出来}）"
+    if [[ "$SYNTHETIC" != "yes" ]]; then
+        # 归档导入的老资金费率、补出来的老标记价格绝不能进运行 A / B 和 NFI 用的 user_data/data/okx（会悄悄改掉它们的结果）
+        OKX_MAIN_REAL="$(cd user_data/data/okx 2> /dev/null && pwd -P || true)"
+        EFF_REAL="$(cd "$EFF_DATADIR" 2> /dev/null && pwd -P || true)"
+        if [[ -n "$OKX_MAIN_REAL" && "$EFF_REAL" == "$OKX_MAIN_REAL" ]] || [[ "${EFF_DATADIR%/}" == "user_data/data/okx" ]]; then
+            bad_arg "用 OKX 资金费历史归档时数据目录不能是 user_data/data/okx（那是运行 A / B 和 NFI 回测用的，往里加资金费会改掉它们的结果）。
+    XSFundingCarry 用专门的配置：--config configs/config.okx-research-funding.json（数据目录 user_data/data/okx-funding）；
+    不想用归档（OKX 只有最近约 3 个月的资金费）：加 --funding-archive 0"
+        fi
+        [[ -f "$FA_TOOL" ]] || bad_arg "找不到 $FA_TOOL（OKX 资金费历史归档的导入脚本）；不用归档：加 --funding-archive 0"
     fi
 fi
 
@@ -415,8 +468,11 @@ def load_cfg(path):
 
 
 def cfg_datadir(cfg, datadir_arg):
+    """--datadir > 配置里的 "datadir"（freqtrade 本身不读，研究脚本转成 --datadir）> user_data/data/<交易所>。"""
     exch = str((cfg.get("exchange") or {}).get("name") or "")
-    return Path(datadir_arg) if datadir_arg else Path("user_data") / "data" / exch
+    if datadir_arg:
+        return Path(datadir_arg)
+    return Path(str(cfg["datadir"])) if cfg.get("datadir") else Path("user_data") / "data" / exch
 
 
 def handler(datadir, fmt):
@@ -578,6 +634,8 @@ def cmd_post(argv):
     ap.add_argument("--listings", default="0")
     ap.add_argument("--listing-strategies", default="")
     ap.add_argument("--original-config", default="")
+    ap.add_argument("--funding-archive", default="0")
+    ap.add_argument("--funding-manifest", default="")
     a = ap.parse_args(argv)
 
     run_dir = Path(a.run_dir)
@@ -775,13 +833,158 @@ def cmd_post(argv):
         miss = [p for p in kept if p not in have]
         if miss:
             out(lines, f"  没有资金费数据：{' '.join(base(p) for p in miss)}")
+        # OKX 资金费历史归档（--funding-archive okx）：manifest 里每个币"第一根真的标记价格"，在那之前的标记价格是用 1h 合约K线补的
+        man, man_pairs = None, {}
+        if a.funding_manifest:
+            try:
+                man = json.loads(Path(a.funding_manifest).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                out(lines, f"  !! 资金费历史归档的 manifest 读不了（{a.funding_manifest}：{exc.__class__.__name__}），补出来的标记价格占比没法算")
+            if isinstance(man, dict):
+                mp = man.get("pairs")
+                if isinstance(mp, list):
+                    mp = {str(x.get("pair") or x.get("family") or i): x for i, x in enumerate(mp) if isinstance(x, dict)}
+                man_pairs = mp if isinstance(mp, dict) else {}
+
+        def man_rec(p):
+            fam = base(p) + "-USDT"
+            for k in (p, fam, fam + "-SWAP", base(p)):
+                if isinstance(man_pairs.get(k), dict):
+                    return man_pairs[k]
+            return {}
+
+        def to_utc(v):
+            if v is None or v == "":
+                return None
+            try:
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    x = float(v)
+                    return datetime.fromtimestamp(x / 1000 if x > 1e11 else x, tz=timezone.utc)
+                txt = str(v).strip()
+                if txt.isdigit() and len(txt) >= 11:
+                    return to_utc(int(txt))
+                if txt.isdigit() and len(txt) == 8:
+                    return datetime.strptime(txt, "%Y%m%d").replace(tzinfo=timezone.utc)
+                dt = datetime.fromisoformat(txt.replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return None
+
+        t_end = utc0(E) + timedelta(days=1)
+        subst_on = a.funding_archive == "okx" and man is not None
+        for p in kept:
+            r = fc[p]
+            if not subst_on:
+                continue
+            mr = man_rec(p)
+            first_real = to_utc(mr.get("first_real_mark") or mr.get("mark_first_real") or mr.get("first_real_mark_date"))
+            r["mark_substitute_rows"] = mr.get("mark_substitute_rows", mr.get("substitute_mark_rows"))
+            r["first_real_mark"] = first_real.isoformat() if first_real else None
+            mk = load_df(dh, p, mark_tf, mark_ct)
+            if mk is None:
+                r["mark_substitute_share"] = None
+                continue
+            md = mk["date"]
+            md = md[(md >= t0) & (md < t_end)]
+            if not len(md):
+                r["mark_substitute_share"] = None
+            elif first_real is None:
+                # manifest 里没有"第一根真的标记价格"：按全部是真的算不保险，标成读不出来
+                r["mark_substitute_share"] = None
+            else:
+                r["mark_substitute_share"] = float((md < first_real).mean())
         for p in have:
             r = fc[p]
             iv = f"中位间隔 {r['interval_hours']:g} 小时" if r["interval_hours"] else "-"
             mm = f"{r['mark_match_share']:.1%}" if r["mark_match_share"] is not None else "-"
+            sub = ""
+            if subst_on:
+                ss = r.get("mark_substitute_share")
+                sub = f"；研究区间内的标记价格有 {ss:.1%} 是用合约K线补的" if ss is not None else "；补出来的标记价格占比读不出来"
             out(lines, f"    {base(p):<8} {r['rows']:>6} 条，{r['first']} ~ {r['last']}，{iv}；"
-                f"研究区间内 {r['rows_in_range']} 条，其中同一时刻有标记价格的 {mm}")
-        plan["funding_coverage"] = {"funding_timeframe": fund_tf, "mark_timeframe": mark_tf, "pairs": fc}
+                f"研究区间内 {r['rows_in_range']} 条，其中同一时刻有标记价格的 {mm}{sub}")
+        # 第一条资金费比"研究开始 - 7 天"还晚的币（XSFundingCarry 调仓前要整整 7 天的资金费）：
+        #   K线比那天早就有的 = 资金费缺了（数据问题），K线也是那以后才有的 = 上线晚（正常，只列出来）
+        need_from = t0 - timedelta(days=7)
+        late_missing, late_listed = [], []
+        for p in have:
+            ff = to_utc(fc[p]["first"])
+            if ff is None or ff <= need_from:
+                continue
+            fut = load_df(dh, p, "1h", "futures")
+            if fut is None:
+                fut = load_df(dh, p, (tfs or ["1d"])[0], "futures")
+            c_first = fut["date"].iloc[0].to_pydatetime() if fut is not None else None
+            (late_missing if c_first is not None and c_first <= need_from else late_listed).append(p)
+        if late_missing:
+            names = " ".join(f"{base(p)}({fc[p]['first']})" for p in late_missing)
+            if len(late_missing) > 3:
+                out(lines, "  !! ============================================================")
+                out(lines, f"  !! {len(late_missing)} 个币的K线在 {need_from.date()}（研究开始前 7 天）以前就有，资金费却更晚才开始：{names}")
+                out(lines, "  !! 这些币在那之前的资金费会按 0 算，XSFundingCarry 也会因为\"前 7 天资金费不完整\"不交易它们。")
+                if a.funding_archive == "okx" and man is not None:
+                    out(lines, "  !! 先看 okx_funding_archive/manifest.json（是不是归档没下全），修好数据再正式运行。")
+                elif a.funding_archive == "okx":
+                    out(lines, "  !! （合成数据不导入资金费历史归档，这里只是检查流程）")
+                else:
+                    out(lines, "  !! 先补资金费数据（OKX 用 --funding-archive okx 导入 2022-03 起的官方归档），修好再正式运行。")
+                out(lines, "  !! ============================================================")
+            else:
+                out(lines, f"  !! K线比研究开始前 7 天（{need_from.date()}）早就有、资金费却更晚才开始的币：{names}")
+        if late_listed:
+            out(lines, f"  上线晚（K线和资金费都在 {need_from.date()} 以后才开始）的币：" + " ".join(f"{base(p)}({fc[p]['first']})" for p in late_listed))
+        cov = {"funding_timeframe": fund_tf, "mark_timeframe": mark_tf, "pairs": fc,
+               "late_first_funding": {"need_from": need_from.date().isoformat(), "missing": late_missing, "listed_late": late_listed}}
+        if a.funding_archive == "okx":
+            mism = bool(isinstance(man, dict) and man.get("overlap_mismatch"))
+            mdict = man if isinstance(man, dict) else {}
+            ov_total = int(mdict.get("overlap_rows_total") or 0)
+            ov_checked = bool(mdict.get("overlap_checked")) and ov_total > 0
+            # 有归档导入的资金费、却没有和接口数据重叠的币（没有逐个核对）
+            no_ov = [p for p in kept if int(man_rec(p).get("archive_rows_added") or 0) > 0 and not int(man_rec(p).get("overlap_rows") or 0)]
+            # 研究要用到的那段里的洞：资金费从"研究开始 - 7 天"起、标记价格从研究开始起（manifest 的 funding_gaps / mark_gaps）
+            fgaps, mgaps = {}, {}
+            for p in kept:
+                for key, since, dst in (("funding_gaps", t0 - timedelta(days=7), fgaps), ("mark_gaps", t0, mgaps)):
+                    for g in man_rec(p).get(key) or []:
+                        if isinstance(g, (list, tuple)) and len(g) >= 3:
+                            b = to_utc(g[1])
+                            if b is not None and b > since:
+                                dst.setdefault(p, []).append([str(g[0]), str(g[1]), g[2]])
+            pu = [p for p in kept if int(man_rec(p).get("provenance_unknown_rows") or 0) > 0]
+            cov["funding_archive"] = {"enabled": True, "manifest": a.funding_manifest or None, "overlap_mismatch": mism,
+                                      "overlap_checked": ov_checked, "overlap_rows_total": ov_total, "no_overlap_pairs": no_ov,
+                                      "funding_gaps": fgaps, "mark_gaps": mgaps, "provenance_unknown_pairs": pu}
+            if subst_on:
+                shares = sorted(r["mark_substitute_share"] for r in fc.values() if r.get("mark_substitute_share") is not None)
+                if shares:
+                    out(lines, f"  OKX 资金费历史归档：研究区间内用合约K线补的标记价格占比，中位数 {shares[len(shares) // 2]:.1%}，"
+                        f"最高 {shares[-1]:.1%}（OKX 只有最近约 3 个月的标记价格；补的和真的一般只差 0.1% 左右，只影响资金费的金额）")
+            if mism:
+                out(lines, "  !! overlap_mismatch：归档和接口下的资金费在重叠的那段对不上（归档的费率列可能不是实际结算的费率），先查清楚再正式运行")
+            elif man is not None and ov_checked:
+                out(lines, f"  归档和接口下的资金费在重叠的那段逐条比较过、对得上（重叠 {ov_total} 条；manifest 的 overlap_checked = true、overlap_mismatch = false）")
+            elif man is not None:
+                out(lines, "  !! 没有核对：归档和接口下的资金费一条都没有重叠（manifest 的 overlap_checked = false），没法确认归档的费率列是实际结算的费率；"
+                    "不能正式运行。办法见 manifest 的 warnings（删掉资金费文件、先下载接口数据再导入）")
+            if man is not None and no_ov and ov_checked:
+                out(lines, f"  !! 这些币有归档导入的资金费、却和接口数据一条都没有重叠，没有逐个核对（费率列已经用别的币核对过）：{' '.join(base(p) for p in no_ov)}")
+            if fgaps:
+                out(lines, f"  !! {len(fgaps)} 个币在研究要用的那段里资金费有洞（币在交易、超过 24 小时没有资金费；洞里资金费按 0 算，"
+                    "XSFundingCarry 也不交易它们）——数据问题，先修再正式运行：")
+                for p, gs in fgaps.items():
+                    out(lines, f"       {base(p):<8} " + "；".join(f"{g[0][:16]} ~ {g[1][:16]}（{g[2]} 小时）" for g in gs[:4])
+                        + (f" 等 {len(gs)} 个" if len(gs) > 4 else ""))
+            if mgaps:
+                out(lines, f"  !! {len(mgaps)} 个币第一根真实标记价格之后标记价格缺了一段（超过 6 小时；超过 24 小时的不能正式运行）："
+                    "办法：删掉这些币的 *-1h-mark.feather，再 make okx-funding-data")
+                for p, gs in mgaps.items():
+                    out(lines, f"       {base(p):<8} " + "；".join(f"{g[0][:16]} ~ {g[1][:16]}（{g[2]} 小时）" for g in gs[:4])
+                        + (f" 等 {len(gs)} 个" if len(gs) > 4 else ""))
+            if pu:
+                out(lines, f"  !! 这些币有来源不明的资金费（清单和来源记录都丢过，没法可靠地核对）：{' '.join(base(p) for p in pu)}"
+                    "——删掉它们的资金费文件和标记价格文件，再 make okx-funding-data")
+        plan["funding_coverage"] = cov
 
     # ---- 4. 研究开始之前的留出段（RESEARCH_PRE_HOLDOUT，预注册 3.3 节"2020 留出段"）----
     if a.pre_holdout:
@@ -1015,6 +1218,240 @@ def main():
 sys.exit(main())
 PYEOF
 
+# OKX 资金费历史归档的 manifest（scripts/okx_funding_archive.py 写的 <数据目录>/okx_funding_archive/manifest.json）：
+#   plain_py -c "$FA_PY" cover <manifest> <研究开始 YYYYMMDD>   退出码 0 = 已经覆盖研究区间（导入脚本联网失败时可以用上次的数据继续）
+#   plain_py -c "$FA_PY" summary <manifest>                    打印几行中文摘要
+#   plain_py -c "$FA_PY" gate <manifest> <研究开始> <导入脚本> <登记表> <策略列表> <结果 JSON>
+#       正式运行之前的检查（2026-11-08 复查后加）：清单里有一项不对（重叠对不上 / 没核对、费率列不对、时间列不对、没补替身、
+#       数据不全是现在登记的导入脚本做的、没覆盖研究区间、来源不明、研究区间里资金费有洞、真实标记价格缺一天以上）= 退出码 1
+# 只用标准库；manifest 的字段名按 okx_funding_archive.py 的写法读，读不到的字段当成没有（不报错）
+IFS= read -r -d '' FA_PY <<'PYEOF' || true
+import hashlib
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+
+ARCHIVE_START = "20220301"  # OKX 官方归档里资金费率从 2022-03 起才有
+API_DAYS = 92               # OKX 资金费率接口只给最近约 92 天（研究脚本第 1 步的下载照常下最近 120 天）
+NEED_DAYS = 7               # XSFundingCarry 调仓要前 7 天的资金费：研究开始前 7 天起就要有
+GATE_MARK_GAP_H = 24        # 真实标记价格缺这么多小时以上 = 不能正式运行（更短的只提醒）
+TOOL = "scripts/okx_funding_archive.py"
+
+
+def day(v):
+    """YYYYMMDD / ISO 日期 / 毫秒或秒时间戳 -> YYYYMMDD；读不出来 = ""。"""
+    if v is None or v == "":
+        return ""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        x = float(v)
+        return datetime.fromtimestamp(x / 1000 if x > 1e11 else x, tz=timezone.utc).strftime("%Y%m%d")
+    s = str(v).strip()
+    if s.isdigit() and len(s) >= 11:
+        return day(int(s))
+    digits = s[:10].replace("-", "").replace("/", "")
+    return digits[:8] if digits[:8].isdigit() and len(digits) >= 8 else ""
+
+
+def first_of(d, *keys):
+    for k in keys:
+        if isinstance(d, dict) and d.get(k) not in (None, ""):
+            return d.get(k)
+    return None
+
+
+def load(path):
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def span(m):
+    rng = m.get("range") if isinstance(m.get("range"), (list, tuple)) else [None, None]
+    start = day(first_of(m, "start", "begin", "start_date", "requested_start") or (rng[0] if rng else None))
+    end = day(first_of(m, "end", "end_date", "requested_end") or (rng[1] if len(rng) > 1 else None))
+    return start, end
+
+
+def pairs_of(m):
+    p = m.get("pairs")
+    if isinstance(p, dict):
+        return p
+    if isinstance(p, list):
+        return {str(x.get("pair") or x.get("family") or i): x for i, x in enumerate(p) if isinstance(x, dict)}
+    return {}
+
+
+def cmd_cover(path, start):
+    try:
+        m = load(path)
+    except (OSError, ValueError) as exc:
+        print(f"manifest 读不了（{exc.__class__.__name__}）")
+        return 1
+    ms, me = span(m)
+    need_start = max(start, ARCHIVE_START)
+    need_end = (datetime.now(timezone.utc) - timedelta(days=API_DAYS)).strftime("%Y%m%d")
+    if not ms or not me:
+        print("manifest 里没有导入的起止日期（start / end）")
+        return 1
+    if ms > need_start:
+        print(f"上次导入从 {ms} 开始，研究要从 {need_start} 开始")
+        return 1
+    if me < need_end:
+        print(f"上次导入只到 {me}，接口只给 {need_end} 以后的资金费，中间会缺")
+        return 1
+    print(f"上次导入覆盖 {ms} ~ {me}（研究需要 {need_start} 起；{need_end} 以后的由接口下载）")
+    return 0
+
+
+def cmd_summary(path):
+    m = load(path)
+    ms, me = span(m)
+    pairs = pairs_of(m)
+    rate = first_of(m, "rate_column", "rate_col") or "（没写）"
+    lister = first_of(m, "lister") or "-"
+    files = m.get("files") if isinstance(m.get("files"), list) else []
+    mism = m.get("overlap_mismatch")
+    warns = m.get("warnings") if isinstance(m.get("warnings"), list) else []
+    subst = 0
+    for v in pairs.values():
+        try:
+            subst += int(first_of(v, "mark_substitute_rows", "substitute_mark_rows") or 0)
+        except (TypeError, ValueError):
+            pass
+    print(f"导入区间 {ms or '?'} ~ {me or '?'}，归档文件 {len(files)} 个（列文件：{lister}），{len(pairs)} 个币，"
+          f"资金费率用的列：{rate}，补出来的标记价格共 {subst} 行")
+    realized = m.get("rate_is_realized")
+    if realized is None:
+        realized = str(rate).lower() in ("real_funding_rate", "realized_rate", "realizedrate")
+    if not realized:
+        print("!! 资金费率用的不是\"实际结算的费率\"那一列（freqtrade 自己从接口下的是实际结算费率）：结果可能有偏差，先看 manifest 的 warnings")
+    if mism:
+        print("!! overlap_mismatch：归档和接口下的资金费在重叠的那段对不上（归档的费率列可能不是实际结算的费率），先查清楚再正式运行")
+    elif not m.get("overlap_checked") or not m.get("overlap_rows_total"):
+        print("!! 归档和接口下的资金费一条都没有比到（overlap_checked = false）：费率列没有核对，不能正式运行")
+    for w in warns[:5]:
+        print(f"!! {str(w).lstrip('! ')[:300]}")
+    if len(warns) > 5:
+        print(f"   （还有 {len(warns) - 5} 条提醒，见 manifest 的 warnings）")
+    return 0
+
+
+def _ms(v):
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp() * 1000
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_json_loose(path):
+    """登记表：纯 JSON；万一有 // 注释也认（和 check_prereg.py 一样宽松，只为了读 pinned_tools）。"""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    try:
+        return json.loads(text)
+    except ValueError:
+        return json.loads("\n".join("" if ln.lstrip().startswith("//") else ln for ln in text.splitlines()))
+
+
+def cmd_gate(path, start, tool_path, registry, strategies, out_json):
+    problems, notes = [], []
+    try:
+        m = load(path)
+        if not isinstance(m, dict):
+            raise ValueError("不是 JSON 对象")
+    except (OSError, ValueError) as exc:
+        m = None
+        problems.append(f"清单读不了（{exc.__class__.__name__}）")
+    if m is not None:
+        if m.get("overlap_mismatch"):
+            problems.append("overlap_mismatch = true：归档和接口下的资金费在重叠的那段对不上（归档的费率列可能不是实际结算的费率）")
+        if not m.get("overlap_checked") or not m.get("overlap_rows_total"):
+            problems.append("overlap_checked = false：归档和接口下的资金费一条都没有比到，费率列没有核对")
+        if m.get("rate_is_realized") is not True:
+            problems.append(f"资金费率用的不是实际结算的费率那一列（rate_column = {m.get('rate_column')}）")
+        if m.get("time_is_fallback"):
+            problems.append("归档里没有结算时间列，用的是 timestamp 一类的列（time_is_fallback = true）")
+        if m.get("mark_substitute") is not True:
+            problems.append("上次导入没有补标记价格替身（--no-mark-substitute）：2022 ~ 最近 3 个月以前的资金费会按 0 算")
+        try:
+            with open(tool_path, "rb") as fh:
+                cur = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            cur = None
+        pinned = set()
+        try:
+            reg = _load_json_loose(registry)
+            for name in str(strategies).split():
+                ent = (reg.get("strategies") or {}).get(name) or {}
+                v = (ent.get("pinned_tools") or {}).get(TOOL) if isinstance(ent.get("pinned_tools"), dict) else None
+                if v:
+                    pinned.add(str(v).lower())
+        except (OSError, ValueError, AttributeError):
+            pass
+        dt = m.get("data_tool_sha256") if isinstance(m.get("data_tool_sha256"), list) else [m.get("tool_sha256")]
+        dt = [str(x).lower() for x in dt if x]
+        if not dt or (cur and dt != [cur]):
+            problems.append(f"数据目录里的归档资金费 / 替身标记价格不全是现在的 {TOOL} 做的（data_tool_sha256：{', '.join(x[:12] for x in dt) or '没写'}，"
+                            f"现在的脚本：{(cur or '读不了')[:12]}）：用默认区间重新导入一次（make okx-funding-data）")
+        if cur and str(m.get("tool_sha256") or "").lower() != cur:
+            problems.append(f"清单是另一个版本的 {TOOL} 写的（{str(m.get('tool_sha256'))[:12]}，现在 {cur[:12]}）：重新导入一次")
+        bad_pin = sorted(x for x in pinned if x not in dt or (cur and x != cur))
+        if bad_pin:
+            problems.append(f"登记表 pinned_tools 固定的 {TOOL}（{', '.join(x[:12] for x in bad_pin)}）和做这份数据的脚本不一样")
+        ms_, me_ = span(m)
+        need_start = max(start, ARCHIVE_START)
+        need_end = (datetime.now(timezone.utc) - timedelta(days=API_DAYS)).strftime("%Y%m%d")
+        if not ms_ or ms_ > need_start:
+            problems.append(f"上次导入从 {ms_ or '?'} 开始，研究要从 {need_start} 开始（用默认区间重新导入）")
+        if not me_ or me_ < need_end:
+            problems.append(f"上次导入只到 {me_ or '?'}，接口只给 {need_end} 以后的资金费，中间会缺（重新导入）")
+        pu = m.get("provenance_unknown_pairs") or []
+        if pu:
+            problems.append(f"{len(pu)} 个币有来源不明的资金费（清单和来源记录都丢过）：{' '.join(pu[:8])}")
+        t0 = datetime.strptime(start, "%Y%m%d").replace(tzinfo=timezone.utc)
+        need_from = (t0 - timedelta(days=NEED_DAYS)).timestamp() * 1000
+        t0_ms = t0.timestamp() * 1000
+        fg, mg, mg_small = [], [], []
+        for p, s in pairs_of(m).items():
+            for g in (s.get("funding_gaps") or []) if isinstance(s, dict) else []:
+                b = _ms(g[1]) if isinstance(g, (list, tuple)) and len(g) >= 2 else None
+                if b is not None and b > need_from:
+                    fg.append(f"{p.split('/')[0]}({str(g[0])[:10]}~{str(g[1])[:10]})")
+            for g in (s.get("mark_gaps") or []) if isinstance(s, dict) else []:
+                b = _ms(g[1]) if isinstance(g, (list, tuple)) and len(g) >= 3 else None
+                if b is None or b < t0_ms:
+                    continue
+                txt = f"{p.split('/')[0]}({str(g[0])[:10]}~{str(g[1])[:10]}，{g[2]} 小时)"
+                (mg if float(g[2] or 0) > GATE_MARK_GAP_H else mg_small).append(txt)
+        if fg:
+            problems.append(f"研究区间里资金费有洞（币在交易、超过 24 小时没有资金费）：{' '.join(fg[:8])}{' ...' if len(fg) > 8 else ''}")
+        if mg:
+            problems.append(f"研究区间里真实标记价格缺了 {GATE_MARK_GAP_H} 小时以上：{' '.join(mg[:8])}{' ...' if len(mg) > 8 else ''}"
+                            "（删掉这些币的 *-1h-mark.feather 再 make okx-funding-data）")
+        if mg_small:
+            notes.append(f"真实标记价格缺了几个小时（不到 {GATE_MARK_GAP_H} 小时，只提醒）：{' '.join(mg_small[:8])}")
+        no_ov = m.get("no_overlap_pairs") or []
+        if no_ov:
+            notes.append(f"{len(no_ov)} 个币没有和接口数据重叠、没有逐个核对（费率列已经用别的币核对过）：{' '.join(no_ov[:8])}")
+    for x in problems:
+        print(f"!! {x}")
+    for x in notes:
+        print(f"   {x}")
+    if not problems:
+        print("资金费历史归档的记录都对（重叠核对过、对得上；实际结算的费率；补了替身；全是现在登记的导入脚本做的；覆盖研究区间；没有洞）")
+    if out_json:
+        with open(out_json, "w", encoding="utf-8") as fh:
+            json.dump({"ok": not problems, "problems": problems, "notes": notes}, fh, ensure_ascii=False, indent=1)
+    return 1 if problems else 0
+
+
+cmd = sys.argv[1]
+if cmd == "cover":
+    sys.exit(cmd_cover(sys.argv[2], sys.argv[3]))
+if cmd == "gate":
+    sys.exit(cmd_gate(*sys.argv[2:8]))
+sys.exit(cmd_summary(sys.argv[2]))
+PYEOF
+
 # 记住屏幕输出：中断发生在 ft 函数（带 > 日志 重定向）里面时，陷阱也会继承那个重定向，要先换回屏幕
 exec 3>&1 4>&2
 on_interrupt() {
@@ -1140,6 +1577,9 @@ fi
 
 say "================ 第 2 步：策略研究 ================"
 say "运行方式：$FT_RUNNER_RESOLVED    配置：$CONFIG"
+if [[ "$DATADIR_FROM_CFG" == "1" ]]; then
+    say "数据目录：$DATADIR_ARG（研究配置里写的 datadir；freqtrade 本身不读这一项，研究脚本会加上 --datadir）"
+fi
 say "策略：    $STRATEGIES"
 if [[ "$HYPEROPT" == "1" ]]; then
     say "调参：    开（每次 $EPOCHS 轮，最多 $(timeout_txt)，目标 $LOSS，随机种子 $SEED，只用训练窗口）"
@@ -1170,6 +1610,10 @@ if [[ "$WITH_SPOT" == "1" ]]; then R5_TXT="${R5_TXT}现货下载+覆盖检查；
 if [[ "$KEEP_DELISTED" == "1" ]]; then R5_TXT="${R5_TXT}保留中途停止交易的币；"; fi
 if [[ "$LISTINGS" == "1" ]]; then R5_TXT="${R5_TXT}生成新币上线日文件；"; fi
 if [[ "$FUNDING_CHECK" == "1" ]]; then R5_TXT="${R5_TXT}资金费覆盖检查；"; fi
+if [[ "$FUNDING_ARCHIVE" == "okx" ]]; then
+    if [[ "$SYNTHETIC" == "yes" ]]; then R5_TXT="${R5_TXT}OKX 资金费历史归档（合成数据不导入，只记下设置）；"
+    else R5_TXT="${R5_TXT}OKX 资金费历史归档（2022-03 起，导入 $EFF_DATADIR）；"; fi
+fi
 if [[ -n "$PRE_HOLDOUT" ]]; then R5_TXT="${R5_TXT}研究开始之前的留出段 $PRE_HOLDOUT${PRE_HOLDOUT_PAIRS:+（币：$PRE_HOLDOUT_PAIRS）}；"; fi
 if [[ "$ALLOW_UNREG" == "1" ]]; then R5_TXT="${R5_TXT}!!和登记表不一致也照样跑（不算正式运行）；"; fi
 if [[ "$DATA_CHECK_ONLY" == "1" ]]; then R5_TXT="${R5_TXT}只做数据检查（管道检查），不回测、不是正式运行；"; fi
@@ -1205,10 +1649,11 @@ say ""
 # 没登记的照常研究。只用 Python 标准库，在本机跑（要读本机的 git 提交号）。
 # 用法：prereg_check <策略目录> <策略列表>；结果写进 结果目录/plan.json 的 "prereg"（plan.json 还没生成时先写 prereg.json）
 # 第 3 个参数 quiet = 通过时只写进 research.log，不打印到屏幕
-# 这次的运行设置（和登记表的 run_settings 对照：手续费、回撤上限、通过标准、切分、预热、保留下架币、留出段；不一样 = 不是正式运行）
-PREREG_SETTINGS="$(printf '{"fee": "%s", "max_dd": "%s", "min_trades": "%s", "pf_ratio": "%s", "min_pf": "%s", "start": "%s", "seen_from": "%s", "wf_folds": "%s", "wf_train_days": "%s", "wf_test_days": "%s", "wf_mode": "%s", "hyperopt": "%s", "detail": "%s", "min_train_days": "%s", "warmup_candles": "%s", "keep_delisted": "%s", "pre_holdout": "%s", "pre_holdout_pairs": "%s"}' \
+# 这次的运行设置（和登记表的 run_settings 对照：手续费、回撤上限、通过标准、切分、预热、保留下架币、留出段、OKX 资金费历史归档、
+# 数据目录（只有登记了 datadir 的策略才对照）；不一样 = 不是正式运行）
+PREREG_SETTINGS="$(printf '{"fee": "%s", "max_dd": "%s", "min_trades": "%s", "pf_ratio": "%s", "min_pf": "%s", "start": "%s", "seen_from": "%s", "wf_folds": "%s", "wf_train_days": "%s", "wf_test_days": "%s", "wf_mode": "%s", "hyperopt": "%s", "detail": "%s", "min_train_days": "%s", "warmup_candles": "%s", "keep_delisted": "%s", "pre_holdout": "%s", "pre_holdout_pairs": "%s", "funding_archive": "%s", "datadir": "%s"}' \
     "$FEE" "$MAX_DD" "$MIN_TRADES" "$PF_RATIO" "$MIN_PF" "$START" "$SEEN_FROM" "$FOLDS" "$WF_TRAIN_DAYS" "$WF_TEST_DAYS" \
-    "$WF_MODE" "$HYPEROPT" "$DETAIL" "$MIN_TRAIN_DAYS" "$WARMUP" "$KEEP_DELISTED" "$PRE_HOLDOUT" "$PRE_HOLDOUT_PAIRS")"
+    "$WF_MODE" "$HYPEROPT" "$DETAIL" "$MIN_TRAIN_DAYS" "$WARMUP" "$KEEP_DELISTED" "$PRE_HOLDOUT" "$PRE_HOLDOUT_PAIRS" "$FUNDING_ARCHIVE" "$EFF_DATADIR_REL")"
 prereg_check() {
     local args=(scripts/check_prereg.py check --strategies "$2" --strategy-dir "$1" --registry "$PREREG"
                 --config "$CONFIG" --run-dir "$RUN_DIR" --settings "$PREREG_SETTINGS")
@@ -1270,6 +1715,17 @@ if [[ "$DOWNLOAD" == "1" ]]; then
     fi
     say "    已有的数据只补新的；本地数据开始得比这个日期晚、又不是因为上线晚的币，会自动补前面那段（--prepend）。"
     say "    下载前会先估算要多久（参考：60 个币第一次从 2021 年起下载约 30~45 分钟，以后更新几分钟）。完整输出：$RUN_DIR/logs/download.log"
+    if [[ "$FUNDING_ARCHIVE" == "okx" && "$SYNTHETIC" != "yes" && -d user_data/data/okx/futures ]]; then
+        # 运行 C 的单独数据目录：先把 user_data/data/okx 已经有的合约K线复制过来（只复制本目录还没有的 *-futures 文件，
+        # 不复制标记价格和资金费，不用符号链接；user_data/data/okx 只读不写），省得重新下载（同 make okx-funding-data）
+        SEED_ARGS=(seed --config "$CONFIG" --from user_data/data/okx)
+        if [[ -n "$DATADIR_ARG" ]]; then SEED_ARGS+=(--datadir "$DATADIR_ARG"); fi
+        if SEED_OUT="$(py_ft "$FA_TOOL" "${SEED_ARGS[@]}" 2>&1)"; then
+            say "    $(printf '%s\n' "$SEED_OUT" | tail -n 1)"
+        else
+            say "    （从 user_data/data/okx 复制合约K线没成功，全部重新下载：$(printf '%s\n' "$SEED_OUT" | tail -n 1)）"
+        fi
+    fi
     DL_ARGS=(--config "$CONFIG" --timeframes "$DL_TFS" --timerange "${DL_START}-")
     if [[ -n "$DATADIR_ARG" ]]; then DL_ARGS+=(--datadir "$DATADIR_ARG"); fi
     if [[ "$WITH_SPOT" == "1" ]]; then DL_ARGS+=(--spot); fi
@@ -1300,6 +1756,79 @@ elif [[ "$SYNTHETIC" == "yes" ]]; then
 else
     say "=== 1/5 不下载数据（--no-download），直接用已经下载的"
 fi
+
+# OKX 资金费历史归档（--funding-archive okx；2026-11-08 起 XSFundingCarry 用）：下载之后把 OKX 官方归档里 2022-03 起的资金费率
+# 导入数据目录，更早的标记价格用 1h 合约K线代替（scripts/okx_funding_archive.py）；manifest 的副本和 sha256 记在结果目录
+FA_COPY=""
+FA_SHA=""
+FA_GATE_OK=""
+FA_CHECK=""
+if [[ "$FUNDING_ARCHIVE" == "okx" ]]; then
+    if [[ "$SYNTHETIC" == "yes" ]]; then
+        say "    OKX 资金费历史归档：合成数据不导入（合成数据自己带资金费率和标记价格），只把设置记进 plan.json"
+    elif [[ "$DOWNLOAD" == "1" ]]; then
+        say "    OKX 资金费历史归档（$FA_TOOL update，2022-03 起，数据目录 $EFF_DATADIR；第一次要下载几百个归档文件，以后只下新的；"
+        say "      完整输出：$RUN_DIR/logs/funding_archive.log）..."
+        FA_ARGS=(update --config "$CONFIG")
+        if [[ -n "$DATADIR_ARG" ]]; then FA_ARGS+=(--datadir "$DATADIR_ARG"); fi
+        set +e
+        py_ft "$FA_TOOL" "${FA_ARGS[@]}" > "$RUN_DIR/logs/funding_archive.log" 2>&1
+        FA_RC=$?
+        set -e
+        { grep -v -E ' - (INFO|DEBUG) - ' "$RUN_DIR/logs/funding_archive.log" || true; } | head -n 80 | sed 's/^/      /' | tee -a "$RUN_LOG"
+        case "$FA_RC" in
+            0) say "    资金费历史归档导入完成" ;;
+            2)
+                FA_COVER="$(plain_py -c "$FA_PY" cover "$FA_MANIFEST" "$START" 2>&1)" && FA_COVER_OK=1 || FA_COVER_OK=0
+                if [[ "$FA_COVER_OK" == "1" ]]; then
+                    say "    !! 资金费历史归档这次联网出错（退出码 2），已经下好的部分照常保留；上次导入的数据已经覆盖研究区间，继续："
+                    say "       $FA_COVER"
+                    say "       （下次运行会接着下；想先补齐再研究：.venv/bin/python $FA_TOOL update --config $CONFIG）"
+                else
+                    say "    （完整输出的最后几行：）"
+                    tail -n 30 "$RUN_DIR/logs/funding_archive.log" | sed 's/^/      /' | tee -a "$RUN_LOG"
+                    say "!! 资金费历史归档联网出错（退出码 2），以前导入的数据也没有覆盖研究区间（${FA_COVER:-没有 manifest}），研究停止。"
+                    say "   已经下好的部分照常保留，网络好了以后重新运行同样的命令会接着下（完整输出：$RUN_DIR/logs/funding_archive.log）。"
+                    exit 1
+                fi ;;
+            3)
+                say "    （完整输出的最后几行，含看到的内容：）"
+                tail -n 30 "$RUN_DIR/logs/funding_archive.log" | sed 's/^/      /' | tee -a "$RUN_LOG"
+                say "!! OKX 归档的文件 / 列表格式认不出来（退出码 3，上面打印了看到的内容），研究停止，不导入任何数据。"
+                say "   先运行 .venv/bin/python $FA_TOOL probe 看看 OKX 现在返回什么，再改导入脚本（改了要重新登记，见 docs/round5-preregistration.md）。"
+                exit 1 ;;
+            *)
+                say "!! 资金费历史归档导入出错（退出码 $FA_RC，完整输出：$RUN_DIR/logs/funding_archive.log），研究停止。"
+                tail -n 8 "$RUN_DIR/logs/funding_archive.log" | sed 's/^/      /' | tee -a "$RUN_LOG"
+                exit 1 ;;
+        esac
+    else
+        say "    OKX 资金费历史归档：不下载（--no-download），不动数据，用上次导入的结果（$FA_MANIFEST）"
+    fi
+    if [[ "$SYNTHETIC" != "yes" ]]; then
+        if [[ ! -f "$FA_MANIFEST" ]]; then
+            say "!! 数据目录里没有资金费历史归档的记录 $FA_MANIFEST，研究停止。"
+            say "   先导入：make okx-funding-data（或者去掉 --no-download，让研究脚本第 1 步自动导入）；不用归档：加 --funding-archive 0"
+            exit 1
+        fi
+        mkd "$RUN_DIR/funding_archive"
+        cp "$FA_MANIFEST" "$RUN_DIR/funding_archive/manifest.json"
+        FA_COPY="$RUN_DIR/funding_archive/manifest.json"
+        FA_SHA="$(plain_py -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$FA_COPY")"
+        say "    资金费历史归档的记录：$FA_MANIFEST（副本 $FA_COPY，sha256 ${FA_SHA:0:12}…）"
+        { plain_py -c "$FA_PY" summary "$FA_COPY" 2>&1 || echo "（manifest 读不了，看 $FA_COPY）"; } | sed 's/^/      /' | tee -a "$RUN_LOG"
+        # 正式运行之前的检查（重叠核对过、对得上；实际结算的费率；补了替身；全是现在登记的导入脚本做的；覆盖研究区间；没有洞）。
+        # 不通过：只做数据检查 / 试跑照常（只提醒），正式运行在第一次回测之前停止（退出码 4，不记正式运行）
+        FA_CHECK="$RUN_DIR/funding_archive/check.json"
+        set +e
+        FA_GATE_OUT="$(plain_py -c "$FA_PY" gate "$FA_COPY" "$START" "$FA_TOOL" "$PREREG" "$STRATEGIES" "$FA_CHECK" 2>&1)"
+        FA_GATE_RC=$?
+        set -e
+        if [[ $FA_GATE_RC -eq 0 ]]; then FA_GATE_OK=1; else FA_GATE_OK=0; fi
+        say "    正式运行之前的检查（结果：$FA_CHECK）："
+        printf '%s\n' "$FA_GATE_OUT" | sed 's/^/      /' | tee -a "$RUN_LOG"
+    fi
+fi
 say ""
 
 # ---------- 2. 数据检查 + 区间切分 ----------
@@ -1311,6 +1840,13 @@ SETTINGS="$(printf '{"max_dd": %s, "max_leverage": 5, "min_pf": %s, "min_trades"
 SETTINGS="${SETTINGS%\}}, \"portfolio\": \"$PORTFOLIO\", \"portfolio_weights\": \"$PORTFOLIO_WEIGHTS\"}"
 # 第 5 轮的开关也记进 plan.json
 SETTINGS="${SETTINGS%\}}, \"keep_delisted\": $KEEP_DELISTED, \"with_spot\": $WITH_SPOT, \"listings\": $LISTINGS, \"funding_check\": $FUNDING_CHECK, \"pre_holdout\": \"$PRE_HOLDOUT\", \"pre_holdout_pairs\": \"$PRE_HOLDOUT_PAIRS\", \"allow_unregistered\": $ALLOW_UNREG, \"prereg_registry\": \"$PREREG\", \"data_check_only\": $DATA_CHECK_ONLY}"
+# 2026-11-08 起：OKX 资金费历史归档（--funding-archive）和它的 manifest（副本在结果目录 funding_archive/manifest.json）
+if [[ -n "$FA_COPY" ]]; then
+    FA_MANIFEST_JSON="{\"file\": \"$FA_MANIFEST\", \"copy\": \"$FA_COPY\", \"sha256\": \"$FA_SHA\", \"check_ok\": $([[ "$FA_GATE_OK" == "1" ]] && echo true || echo false), \"check\": \"$FA_CHECK\"}"
+else
+    FA_MANIFEST_JSON="null"
+fi
+SETTINGS="${SETTINGS%\}}, \"funding_archive\": \"$FUNDING_ARCHIVE\", \"funding_archive_manifest\": $FA_MANIFEST_JSON, \"datadir_from_config\": $DATADIR_FROM_CFG}"
 # 白名单里有正则（例如 config.okx-research-listings.json 的"OKX 全部 USDT 永续"）：按本地有K线的合约展开，
 # 数据检查用展开后的列表（结果目录的 config.expanded.json = 研究配置 + pairs.expanded.json）；没有正则时什么都不做
 R5_LOG="$RUN_DIR/logs/round5_data_check.log"
@@ -1357,6 +1893,7 @@ if [[ "$R5_POST" == "1" ]]; then
                --funding "$FUNDING_CHECK" --listings "$LISTINGS" --pre-holdout "$PRE_HOLDOUT" --pre-holdout-pairs "$PRE_HOLDOUT_PAIRS")
     if [[ "$LISTINGS" == "1" ]]; then POST_ARGS+=(--listing-strategies "NewListingShortHedged"); fi
     if [[ "$EXPANDED" == "1" ]]; then POST_ARGS+=(--original-config "$CONFIG"); fi
+    if [[ "$FUNDING_ARCHIVE" == "okx" ]]; then POST_ARGS+=(--funding-archive okx --funding-manifest "$FA_COPY"); fi
     say ""
     if ! py_ft -c "$RS_PY" "${POST_ARGS[@]}" 2>> "$R5_LOG" | sed 's/^/    /' | tee -a "$RUN_LOG"; then
         tail -n 3 "$R5_LOG" | sed 's/^/    /' | tee -a "$RUN_LOG"
@@ -1446,6 +1983,13 @@ os.replace(tmp, plan_path)' "$RUN_DIR/plan.json"
     if has_strategy XSFundingCarry; then
         say "    - XSFundingCarry：data_check.txt 里每个币的资金费条数、起止日期和\"同一时刻有标记价格\"的比例。大部分币研究区间里没有资金费、或者对不上标记价格时，"
         say "      回测里的 funding_fees 会是 0（\"无效\"），先修数据，不进入正式运行；再用 make pipeline-week 看一周里 funding_fees 不为 0 的笔数。"
+        if [[ "$FUNDING_ARCHIVE" == "okx" && -n "$FA_COPY" ]]; then
+            say "      OKX 资金费历史归档：再看\"用合约K线补的标记价格占比\"、重叠核对（要 overlap_checked = true 而且 overlap_mismatch = false），"
+            say "      \"K线早就有、资金费却更晚才开始的币\"（有很多 = 归档没下全）、资金费的洞和真实标记价格缺的段。归档的记录：$FA_COPY"
+            if [[ "$FA_GATE_OK" != "1" ]]; then
+                say "      !! 第 1 步\"正式运行之前的检查\"没通过（$FA_CHECK）：现在去掉 --data-check-only 也会在第一次回测之前停下，先修数据。"
+            fi
+        fi
     fi
     if has_strategy PremiumFade; then
         say "    - PremiumFade：data_check.txt 里\"有现货数据的币\"和现货 / 永续时间戳对上的比例。有现货数据的币少于 20 个时记为\"测不了\"。"
@@ -1467,6 +2011,30 @@ for v in $VARIANT_DIRS; do
     mkd "$RUN_DIR/strategies/$v"
     cp "$STRAT_SRC_DIR"/*.py "$RUN_DIR/strategies/$v/"
 done
+# OKX 资金费历史归档的记录不对（第 1 步"正式运行之前的检查"）：正式运行在这里停止，一次回测都不跑，也不记正式运行
+# （合成数据不导入归档；RESEARCH_ALLOW_UNREGISTERED=1 的试跑本来就不算正式运行，只提醒）
+if [[ "$FUNDING_ARCHIVE" == "okx" && -n "$FA_COPY" && "$FA_GATE_OK" != "1" ]]; then
+    if [[ "$ALLOW_UNREG" == "1" ]]; then
+        say "!! OKX 资金费历史归档的记录有问题（见第 1 步、$FA_CHECK）；RESEARCH_ALLOW_UNREGISTERED=1 照样跑，结果不算正式运行。"
+    else
+        say "!! OKX 资金费历史归档的记录有问题（第 1 步\"正式运行之前的检查\"，详情 $FA_CHECK），正式运行停止，一次回测都没有跑，"
+        say "   也没有记进正式运行记录（这次不算用掉）。按上面的提示修好数据（make okx-funding-data、make okx-funding-status），"
+        say "   再用同样的命令运行。数据检查的结果照常在 $RUN_DIR/data_check.txt。"
+        plain_py -c 'import json, os, sys
+plan_path, check = sys.argv[1], sys.argv[2]
+plan = json.load(open(plan_path, encoding="utf-8"))
+early = os.path.join(os.path.dirname(plan_path), "prereg.json")
+if "prereg" not in plan and os.path.isfile(early):
+    plan["prereg"] = json.load(open(early, encoding="utf-8"))  # 第 0 步预注册检查的完整结果
+plan.setdefault("prereg", {})["formal_run"] = False
+plan["prereg"]["formal_note"] = "OKX 资金费历史归档的记录有问题（" + check + "），正式运行在第一次回测之前停止，没有记进正式运行记录"
+tmp = plan_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(plan, fh, ensure_ascii=False, indent=1)
+os.replace(tmp, plan_path)' "$RUN_DIR/plan.json" "$FA_CHECK" || true
+        exit 4
+    fi
+fi
 # 预注册凭证写进 plan.json（核对的是回测真正用的副本 strategies/base/；第 0 步的结果另存为 plan.json 的 prereg_early）
 prereg_check "$RUN_DIR/strategies/base" "$PLAN_STRATEGIES" quiet
 say "预注册凭证（每个策略文件的 sha256、git 提交号）已写进 $RUN_DIR/plan.json 的 prereg（核对的是回测用的副本 strategies/base/）"

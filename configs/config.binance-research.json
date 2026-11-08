@@ -19,6 +19,9 @@
     //   4. 用法：make research ARGS="--config configs/config.binance-research.json --strategies XSFundingCarry"
     //      max_open_trades 这里和 OKX 研究配置一样是 5；需要更多名额的策略在 configs/research-overrides/<策略>.json 里改
     //      （XSFundingCarry 是 20）。
+    //   !! 2026-11-08 起（David 的决定）：XSFundingCarry 的预注册正式运行改在美国 VPS 上用 configs/config.okx-research-funding.json
+    //   !! （OKX 官方资金费历史归档，见 docs/round5-preregistration.md 6.5 节）。本文件留给以后上模拟盘 / 实盘之前的币安复核：
+    //   !! 那时先在登记表 configs/preregistration.json 里给 XSFundingCarry 加一个币安的阶段、提交 git，否则预注册检查会拒绝。
     // 不需要 API Key（只用公开行情）；密钥、服务器地址一律不要写进本文件。
     // ============================================================
     "$schema": "https://schema.freqtrade.io/schema.json",

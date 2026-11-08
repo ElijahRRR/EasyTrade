@@ -37,6 +37,11 @@
 #     参考：57 个币 × 1h/4h/1d 从 2021-01-01 起第一次下载，每个币约 220 次请求，全部约 25~40 分钟；
 #     1m 一个币从 2021 年起约 1 万次请求（约 20 分钟），20 个币就是好几个小时。
 #   * --include-inactive-pairs：如果 --pairs 用了正则（例如 ".*/USDT:USDT"），也包含已下架的币，减少幸存者偏差。
+#   * 配置里写了 "datadir"（例如 configs/config.okx-research-funding.json 的 user_data/data/okx-funding）、又没写 --datadir 时，
+#     下到配置里的目录（freqtrade 2026.10 自己不读这一项，脚本替它加上 --datadir）。
+#   * 导入过 OKX 资金费历史归档的数据目录（有 okx_funding_archive/manifest.json，scripts/okx_funding_archive.py 写的）：
+#     标记价格 / 资金费率照常只下最近 --funding-days 天、只往后补（freqtrade 不会动已有的老数据）；--funding-days 0 在这种目录里不用
+#     （按 120 天）；--erase 会删掉归档导入的老数据，拒绝（只重下K线可以：--erase --candle-types futures）。
 #   * 其他交易所（例如币安）：标记价格和资金费率和K线一起从开始日期下（币安的资金费从 2019-09 起都有）。
 #     本地已经有、但开始得比开始日期晚的，和K线一样自动用 --prepend 补前面那段（"上线晚"的币不补）。
 #   * 现货（--spot / --spot-only，第 5 轮）：freqtrade download-data --trading-mode spot --timeframes 1h（--spot-timeframes 可改）
@@ -128,7 +133,13 @@ ex = cfg.get("exchange") or {}
 name = str(ex.get("name") or "").lower()
 is_okx = name in ("okx", "myokx", "okxus")
 fmt = str(cfg.get("dataformat_ohlcv") or "feather")
-datadir = Path(datadir_arg) if datadir_arg else Path("user_data") / "data" / name
+# 数据目录：--datadir > 配置里的 "datadir"（freqtrade 2026.10 自己不读这一项，下面的 bash 把它转成 --datadir）> user_data/data/<交易所>
+cfg_datadir = str(cfg.get("datadir") or "")
+datadir = Path(datadir_arg) if datadir_arg else (Path(cfg_datadir) if cfg_datadir else Path("user_data") / "data" / name)
+emit("PLAN_CFG_DATADIR", cfg_datadir)
+# OKX 资金费历史归档（scripts/okx_funding_archive.py）导入过的数据目录：资金费率 / 标记价格里有接口给不了的老数据
+archive = is_okx and (datadir / "okx_funding_archive" / "manifest.json").is_file()
+emit("PLAN_ARCHIVE", 1 if archive else 0)
 pairs = pairs_s.split() if pairs_s else [str(p) for p in (ex.get("pair_whitelist") or [])]
 literal = bool(pairs) and not any(c in p for p in pairs for c in "*?[]()^$|+\\")
 tfs = tfs_s.split()
@@ -153,6 +164,11 @@ mark_tf = str(has.get("mark_ohlcv_timeframe") or "1h")
 fund_tf = str(has.get("funding_fee_timeframe") or "1h")
 mark_type = CandleType.from_string(str(has.get("mark_ohlcv_price") or "mark"))
 
+if archive and auto and fund_days == 0:
+    # 归档目录里 2022-03 以后的老资金费率已经有了，接口又只给最近约 3 个月：从开始日期下只会白跑几个小时（还会对老数据做 --prepend）
+    fund_days = 120
+    say("这个数据目录导入过 OKX 资金费历史归档（okx_funding_archive/manifest.json）：--funding-days 0 不用，"
+        "标记价格和资金费率照常只下最近 120 天（老数据由 scripts/okx_funding_archive.py update 导入）")
 split = auto and is_okx and fund_days > 0
 fund_start = None
 if split:
@@ -307,6 +323,8 @@ PLAN_BACKFILL_PAIRS=""
 PLAN_FM_BACKFILL_PAIRS=""
 PLAN_SPOT_PAIRS=""
 PLAN_SPOT_BACKFILL_PAIRS=""
+PLAN_CFG_DATADIR=""
+PLAN_ARCHIVE=0
 echo "运行方式：$FT_RUNNER_RESOLVED"
 echo "下载前检查本地已有的数据 ..."
 if PLAN_OUT="$(py_ft -c "$PLAN_PY" "$CONFIG" "$DATADIR" "$START" "$DAYS" "$TIMEFRAMES" "$PAIRS" "$FUNDING_DAYS" "$AUTO" "$BACKFILL" \
@@ -325,6 +343,44 @@ if [[ "$PLAN_OK" != "1" ]]; then
     fi
 fi
 if [[ "$BACKFILL" != "1" ]]; then PLAN_BACKFILL_PAIRS=""; PLAN_FM_BACKFILL_PAIRS=""; PLAN_SPOT_BACKFILL_PAIRS=""; fi
+
+# 配置里写了 "datadir"（例如 configs/config.okx-research-funding.json）、命令行又没有 --datadir：freqtrade 2026.10 自己不读这一项，
+# 会把数据下到 user_data/data/<交易所>，所以这里替它加上 --datadir
+if [[ -z "$DATADIR" && "$PLAN_OK" != "1" ]]; then
+    # 下载前检查没做成：至少把配置里的 datadir 读出来（读不出来就按 freqtrade 的默认目录）
+    PLAN_CFG_DATADIR="$(py_ft -c "import sys
+from freqtrade.configuration.load_config import load_from_files
+print(str(load_from_files([sys.argv[1]]).get('datadir') or ''))" "$CONFIG" 2> /dev/null | tail -n 1 || true)"
+fi
+if [[ -z "$DATADIR" && -n "$PLAN_CFG_DATADIR" ]]; then
+    DATADIR="$PLAN_CFG_DATADIR"
+    EXTRA+=(--datadir "$DATADIR")
+    echo "  · 数据目录：$DATADIR（配置里写的 datadir，自动加上 --datadir）"
+fi
+
+# 导入过 OKX 资金费历史归档的数据目录：--erase 会删掉接口再也给不了的老资金费率和补出来的老标记价格，拒绝
+if [[ "$PLAN_ARCHIVE" == "1" ]]; then
+    HAS_ERASE=0
+    CT_LIST=""
+    i=0
+    while [[ $i -lt ${#EXTRA[@]} ]]; do
+        a="${EXTRA[$i]}"
+        case "$a" in
+            --erase) HAS_ERASE=1 ;;
+            --candle-types=*) CT_LIST="$CT_LIST ${a#*=}" ;;
+            --candle-types)
+                j=$((i + 1))
+                while [[ $j -lt ${#EXTRA[@]} && "${EXTRA[$j]}" != -* ]]; do CT_LIST="$CT_LIST ${EXTRA[$j]}"; j=$((j + 1)); done ;;
+        esac
+        i=$((i + 1))
+    done
+    if [[ "$HAS_ERASE" == "1" ]] && { [[ -z "${CT_LIST// /}" ]] || [[ " $CT_LIST " == *" mark "* || " $CT_LIST " == *" funding_rate "* ]]; }; then
+        echo "错误：数据目录 ${DATADIR:-（默认）} 导入过 OKX 资金费历史归档（okx_funding_archive/manifest.json），" >&2
+        echo "  --erase 会把归档导入的老资金费率和补出来的老标记价格一起删掉（OKX 接口只给最近约 3 个月，删了就下不回来）。" >&2
+        echo "  只重下K线：--erase --candle-types futures；真要全部重来：删掉整个数据目录，再 make okx-funding-data。" >&2
+        exit 1
+    fi
+fi
 
 # ---------- 公共参数 ----------
 BASE=(download-data --config "$CONFIG" --trading-mode futures --include-inactive-pairs)
@@ -414,8 +470,8 @@ if [[ $RC -eq 0 ]]; then
 else
     echo "下载有出错的步骤（退出码 $RC，看上面的日志），已经下好的部分照常保存。查看已有数据的时间范围："
 fi
-echo "  freqtrade list-data --config $CONFIG --trading-mode futures --show-timerange"
+echo "  freqtrade list-data --config $CONFIG${DATADIR:+ --datadir $DATADIR} --trading-mode futures --show-timerange"
 if [[ "$SPOT" != "0" ]]; then
-    echo "  freqtrade list-data --config $CONFIG --trading-mode spot --show-timerange      # 现货"
+    echo "  freqtrade list-data --config $CONFIG${DATADIR:+ --datadir $DATADIR} --trading-mode spot --show-timerange      # 现货"
 fi
 exit $RC
