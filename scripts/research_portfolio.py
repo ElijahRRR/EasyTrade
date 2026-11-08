@@ -10,6 +10,9 @@
   .venv/bin/python scripts/research_portfolio.py --run-dir <目录> --strategies "BigTrendShortLowRisk,TsmomTrend,XSMomentum"
   .venv/bin/python scripts/research_portfolio.py --run-dir <目录> --weights riskparity
   .venv/bin/python scripts/research_portfolio.py --run-dir <目录> --max-dd 12      # 按别的回撤上限重新判（不改 plan.json）
+  # 第 5 轮：合并几个研究目录（例如币安服务器上跑的 XSFundingCarry + OKX 上跑的其他策略），结果标注"跨交易所近似"，
+  # 写到第一个目录的 portfolio-merged.txt/csv/json（--out-dir 可以换目录）；区间切分和判定按第一个目录
+  .venv/bin/python scripts/research_portfolio.py --run-dirs <OKX 的目录> <币安的目录> --weights riskparity
 
 模型：
   * freqtrade 不能在同一个账户里同时跑两个带杠杆的机器人，所以每个策略一个子账户、一个机器人；
@@ -30,6 +33,8 @@
     训练段日收益相关系数 ≥ 0.7 的两个只留一个（留训练段 收益/回撤 比更好的）。不看样本外：
     "用样本外挑、再用样本外判"等于自己给自己打分。
   * 权重：equal = 平均分（默认）；riskparity = 按每个策略在训练段的日收益波动率的倒数分（只用训练段，绝不用样本外）。
+  * 另外报告（只报告，不用来挑选、不参与判定）：每个候选策略和参考趋势策略（TsmomTrend、DonchianTrend、XSMomentum、
+    BigTrendShort，这次有结果的）的训练段日收益相关系数（预注册第 3.4 节）。
   * 通过标准和单个策略相同：样本外和走步拼接都要 组合总权益的含浮亏回撤 ≤ 上限、总收益 > 0、盈亏因子 ≥ 1.2（按组合里
     所有交易、按子账户资金缩放后的盈亏算）、交易 ≥ 30 笔、杠杆 ≤ 5x；训练段要赚钱、回撤 ≤ 上限；
     样本外盈亏因子不低于训练段的 0.6 倍；没看过的一段（有的话）也要赚钱、回撤 ≤ 上限。
@@ -74,6 +79,9 @@ MIN_NOTIONAL = {"BTC/USDT:USDT": 100.0, "ETH/USDT:USDT": 20.0}
 AMOUNT_RESERVE_PERCENT = 0.05
 # freqtrade 最多把仓位放大 30% 去凑最小下单额，再不够就不开这一笔（freqtrade/wallets.py validate_stake_amount）
 MIN_STAKE_ADJUST = 1.3
+# 第 5 轮：每个候选策略和这几个参考趋势策略的训练段日收益相关系数（只报告，不用来挑选；预注册第 3.4 节）
+REF_TREND = ("TsmomTrend", "DonchianTrend", "XSMomentum", "BigTrendShort")
+CROSS_EXCHANGE_LABEL = "跨交易所近似"
 SEG_CN = {"train": "训练段", "holdout": "没看过的一段", "test": "样本外", "wf": "走步拼接"}
 SEG_ORDER = ("train", "holdout", "test", "wf")
 WEIGHTS_CN = {"equal": "平均分", "riskparity": "风险平价（按训练段日收益波动率的倒数分）"}
@@ -444,7 +452,11 @@ def _segment_window(plan: dict[str, Any], seg: str) -> tuple[str, str] | None:
 
 
 def _member_segment(plan: dict[str, Any], row: dict[str, Any], seg: str) -> dict[str, Any]:
-    """一个策略在一个区间里的交易、初始资金、资金曲线。"""
+    """一个策略在一个区间里的交易、初始资金、资金曲线。
+
+    合并多个运行目录（--run-dirs）时，row["_plan"] 是这个策略自己那次研究的 plan.json：K线从它自己的数据目录读
+    （OKX 和币安的K线不在同一个目录）。"""
+    own = row.get("_plan") or plan
     if seg == "wf":
         infos, start, missing = stitched_infos(row.get("folds") or [])
         have = [r for r in row.get("folds") or [] if r is not None]
@@ -459,9 +471,9 @@ def _member_segment(plan: dict[str, Any], row: dict[str, Any], seg: str) -> dict
         tf = str(ref.get("timeframe_detail") or ref.get("timeframe") or "")
         cfg = ref.get("_cfg") or {}
         curve = candle_curve(
-            infos, start, tf, Path(plan["datadir"]),
-            str(cfg.get("dataformat_ohlcv") or plan.get("dataformat") or "feather"),
-            str(cfg.get("trading_mode") or plan.get("trading_mode") or "futures"),
+            infos, start, tf, Path(own["datadir"]),
+            str(cfg.get("dataformat_ohlcv") or own.get("dataformat") or "feather"),
+            str(cfg.get("trading_mode") or own.get("trading_mode") or "futures"),
         )
         if curve is None:
             curve = closed_curve(infos, start)
@@ -667,6 +679,53 @@ def notional_check(seg_res: dict[str, Any], capital: float) -> dict[str, Any]:
     return out
 
 
+def reference_correlations(plan: dict[str, Any], rows: list[dict[str, Any]],
+                           cache: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """每个候选策略（不是参考策略的，默认参数那一行）和参考趋势策略（REF_TREND 里这次有结果的）的训练段日收益相关系数。
+    只报告，不参与挑选和判定。cache = {策略名: 训练段 _member_segment}（已经算过的就不再读K线）。
+    日收益：每个策略自己的资金曲线（不缩放）在训练段（plan.json 的 train，合并时按第一个运行目录）每天 00:00 UTC 的权益。"""
+    by_name: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if r.get("variant") == "default" and r["strategy"] not in by_name:
+            by_name[r["strategy"]] = r
+    refs = [n for n in REF_TREND if n in by_name]
+    cands = [n for n in by_name if n not in REF_TREND]
+    out: dict[str, Any] = {"refs": refs, "candidates": cands, "matrix": [], "trades": {}, "skip": ""}
+    win = _segment_window(plan, "train")
+    if not refs:
+        out["skip"] = f"这次没有参考策略（{'、'.join(REF_TREND)}）的结果"
+        return out
+    if not cands:
+        out["skip"] = "这次只有参考策略，没有别的候选"
+        return out
+    if win is None:
+        out["skip"] = "没有训练段"
+        return out
+    t_start, t_end = _day_ts(win[0]), _day_ts(win[1]) + DAY
+    cache = cache if cache is not None else {}
+    rets: dict[str, Any] = {}
+    for n in refs + cands:
+        r = by_name[n]
+        if r.get("train") is None:
+            rets[n] = None
+            continue
+        m = cache.get(n)
+        if m is None:
+            m = cache[n] = _member_segment(plan, r, "train")
+        out["trades"][n] = len(m["infos"])
+        rets[n] = daily_returns(daily_values(*_unit(m["curve"]), t_start, t_end))
+    for c in cands:
+        line = []
+        for f in refs:
+            if rets[c] is None or rets[f] is None:
+                line.append(None)
+            else:
+                line.append(corr_matrix([rets[c], rets[f]])[0][1])
+        out["matrix"].append(line)
+    out["window"] = [win[0], win[1]]
+    return out
+
+
 def judge(res: dict[str, Any], s: dict[str, Any], wf_enabled: bool) -> list[str]:
     """和 research_report.judge 同一套标准，原因前面加"组合"。"""
     max_dd = cd.settings_max_dd_pct(s) / 100
@@ -755,9 +814,21 @@ def build(plan: dict[str, Any], rows: list[dict[str, Any]], strategies: Any = No
         "capital": capital, "weights_mode": mode, "selection": {k: v for k, v in sel.items() if k != "rows"},
         "segments": {}, "verdict": "SKIP", "reasons": [], "notes": [],
     }
+    if plan.get("_merged"):
+        res["merged"] = plan["_merged"]
+    else:
+        res["prereg"] = _formal_of_plan(plan, rows)
     members = sel["rows"]
     train_mem = [_member_segment(plan, r, "train") for r in members]
-    if sel["how"] == "rule" and len(members) >= 2:
+    # 和参考趋势策略的相关系数（只报告）：已经算过的训练段曲线直接用
+    res["ref_corr"] = reference_correlations(plan, rows, {r["strategy"]: m for r, m in zip(members, train_mem)})
+    # 第 5 轮（预注册第 3.4 节）：登记过的策略即使是指定的（--strategies），也按训练段相关系数 ≥ 0.7 去重；
+    # 没有登记的策略指定时照旧不去重（和以前一样），只在下面提醒训练段高度相关
+    registered = [r["strategy"] for r in members if (r.get("rules") or {}).get("registered")]
+    dedupe = len(members) >= 2 and (sel["how"] == "rule" or bool(registered))
+    res["selection"]["dedupe"] = dedupe
+    res["selection"]["registered"] = registered
+    if dedupe:
         keep, dropped = drop_correlated(plan, members, train_mem)
         res["selection"]["dropped_corr"] = dropped
         members = [members[i] for i in keep]
@@ -816,6 +887,11 @@ def build(plan: dict[str, Any], rows: list[dict[str, Any]], strategies: Any = No
         for j in range(i + 1, n):
             a = c_tr[i][j] if c_tr else None
             b = c_te[i][j] if c_te else None
+            if not dedupe and sel["how"] == "explicit" and a is not None and a >= HIGH_CORR:
+                res["notes"].append(
+                    f"!! {names[i]} 和 {names[j]} 训练段日收益相关系数 {a:.2f}（≥ {HIGH_CORR:g}）：默认挑选规则会只留一个，"
+                    "指定策略（--strategies）时不去重，两个都在组合里"
+                )
             if b is not None and b >= HIGH_CORR:
                 res["notes"].append(
                     f"{names[i]} 和 {names[j]} 样本外日收益相关系数 {b:.2f}（≥ {HIGH_CORR:g}）：基本是同涨同跌，"
@@ -865,6 +941,79 @@ def _table(headers: list[tuple[str, bool]], body: list[list[str]], indent: str =
     return out
 
 
+def _formal_of_plan(plan: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """这个研究目录是不是正式的预注册运行（plan.json 的 prereg，scripts/check_prereg.py 写的）。
+    里面没有登记过的策略 = None（不提）。"""
+    reg = list(dict.fromkeys(r["strategy"] for r in rows if (r.get("rules") or {}).get("registered")))
+    if not reg:
+        return None
+    pr = plan.get("prereg")
+    if not isinstance(pr, dict):
+        return {"strategies": reg, "formal": False, "note": "plan.json 里没有预注册凭证"}
+    return {"strategies": reg, "formal": pr.get("formal_run") is True, "note": str(pr.get("formal_note") or ""),
+            "allow_unregistered": bool(pr.get("allow_unregistered")), "problems": list(pr.get("problems") or [])}
+
+
+def _formal_status_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
+    """组合成员里有登记过的策略时，写清楚来源的研究目录是不是正式的预注册运行。"""
+    mg = res.get("merged")
+    names = set(res.get("selection", {}).get("selected") or [])
+    if mg:
+        items = [(x["run_dir"], x.get("prereg")) for x in mg["runs"]]
+    else:
+        items = [(str(plan.get("_run_dir") or "?"), res.get("prereg"))]
+    L = []
+    for d, fp in items:
+        if not fp or not (set(fp["strategies"]) & names):
+            continue
+        if fp["formal"]:
+            L.append(f"正式运行：{d} 是正式的预注册运行（{'、'.join(fp['strategies'])}）")
+        else:
+            L.append(f"!! 不是正式的预注册运行：{d}（{'、'.join(fp['strategies'])}）：{fp['note'] or '没有记下原因'}"
+                     + ("；用了 RESEARCH_ALLOW_UNREGISTERED=1" if fp.get("allow_unregistered") else "")
+                     + "。这个组合结果不能当第 5 轮的正式结论用。")
+    return L
+
+
+def _merged_lines(res: dict[str, Any]) -> list[str]:
+    """--run-dirs 合并了几个运行目录：抬头标明"跨交易所近似"（或"多个运行目录合并"），列出每个目录的交易所、策略、区间。"""
+    mg = res.get("merged")
+    if not mg:
+        return []
+    L = [f"!! {mg['label']}：组合成员来自 {len(mg['runs'])} 个运行目录（按 --run-dirs 的顺序，同名策略用前面那个）："]
+    for x in mg["runs"]:
+        L.append(f"   - {x['run_dir']}（{x['exchange'] or '?'}）：{'、'.join(x['strategies']) or '没有结果'}；"
+                 f"训练段 {x['train'][0]}~{x['train'][1]}，样本外 {x['test'][0]}~{x['test'][1]}"
+                 + (f"，没看过的一段 {x['holdout'][0]}~{x['holdout'][1]}" if x.get("holdout") else ""))
+    if mg.get("cross_exchange"):
+        L.append("   不同交易所的手续费、资金费、K线都不一样，子账户分在不同交易所；各自的资金曲线按时间对齐后直接相加，")
+        L.append("   只是近似，不是同一个账户、同一份数据的结果。")
+    L.append(f"   区间、挑选、判定按第一个目录（{mg['runs'][0]['run_dir']}）的切分；别的目录的策略在它自己的区间以外按空仓算。")
+    for d in mg.get("window_diff") or []:
+        L.append(f"   !! {d}")
+    for d in mg.get("dups") or []:
+        L.append(f"   提醒：{d}")
+    return L
+
+
+def _ref_corr_lines(res: dict[str, Any]) -> list[str]:
+    rc = res.get("ref_corr")
+    if not rc:
+        return []
+    if rc.get("skip"):
+        return [f"和参考趋势策略的相关系数（训练段日收益，只报告）：没有算（{rc['skip']}）", ""]
+    w = rc.get("window") or ["?", "?"]
+    L = [f"和参考趋势策略的相关系数（训练段 {w[0]}~{w[1]} 的日收益，皮尔逊；只报告，不用来挑选，也不参与判定）："]
+    heads = [("候选策略", False)] + [(f, True) for f in rc["refs"]]
+    body = [[c] + ["-" if v is None else f"{v:.2f}" for v in line] for c, line in zip(rc["candidates"], rc["matrix"])]
+    L.extend(_table(heads, body))
+    L.append("    （\"-\" = 训练段没有结果或一笔交易都没有，算不出来；"
+             + (f"{res['merged']['label']}：不同交易所的策略日收益放在一起比，" if res.get("merged") else "")
+             + f"≥ {HIGH_CORR:g} 基本是同一种收益来源）")
+    L.append("")
+    return L
+
+
 def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     s = plan.get("settings") or {}
     max_dd = cd.settings_max_dd_pct(s)
@@ -872,6 +1021,8 @@ def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     L: list[str] = ["================ 子账户组合检查（每个策略一个币安子账户、一个机器人，资金分开） ================"]
     if plan.get("synthetic"):
         L.append("!! 合成数据：下面的数字没有意义，只检查流程 !!")
+    L.extend(_merged_lines(res))
+    L.extend(_formal_status_lines(res, plan))
     L.append(
         f"做法：{cap:g} USDT 按权重分到各个子账户，每个子账户单独跑一个策略，之后子账户之间不挪钱；看所有子账户加起来的总权益。"
     )
@@ -887,6 +1038,14 @@ def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     sel = res["selection"]
     if sel["how"] == "explicit":
         L.append(f"挑选：按指定（RESEARCH_PORTFOLIO）：{'、'.join(sel['explicit'])}")
+        if sel.get("dedupe"):
+            L.append(f"      里面有登记过的第 5 轮策略（{'、'.join(sel.get('registered') or [])}）：按预注册第 3.4 节，"
+                     f"训练段日收益相关系数 ≥ {HIGH_CORR:g} 的两个只留一个（留训练段 收益/回撤 比更好的）")
+            for d in sel.get("dropped_corr") or []:
+                L.append(f"      去掉 {d['strategy']}：和 {d['like']} 训练段日收益相关系数 {d['corr']:.2f}（≥ {HIGH_CORR:g}），"
+                         f"留 {d['like']}")
+            if not sel.get("dropped_corr"):
+                L.append("      没有去掉任何策略（两两之间训练段相关系数都 < " + f"{HIGH_CORR:g}，或者算不出来）")
     else:
         L.append(
             f"挑选：默认参数那一行 训练段赚钱、训练段盈亏因子 ≥ {SELECT_MIN_PF:.1f}、训练段回撤 ≤ {max_dd:g}% 的策略"
@@ -909,6 +1068,7 @@ def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     for m in sel["missing"]:
         L.append(f"      !! 没法放进组合：{m}")
     if res["verdict"] == "SKIP":
+        L.extend(_ref_corr_lines(res))
         L.append(f"结论：没有做（{res.get('skip_reason')}）。")
         L.append("      想看某几个策略合起来怎么样，可以自己指定，例如 make research RESEARCH_PORTFOLIO=\"BigTrendShortLowRisk,TsmomTrend\" ARGS=\"--no-download\"，")
         L.append("      或者不重跑回测：.venv/bin/python scripts/research_portfolio.py --run-dir <这次的运行目录> --strategies \"A,B\"")
@@ -983,6 +1143,7 @@ def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
         L.extend(_table(heads, body, indent="      "))
     L.append("    （\"-\" = 这一段这个子账户一笔交易都没有，算不出来）")
     L.append("")
+    L.extend(_ref_corr_lines(res))
 
     # 最小下单额
     nc = res.get("notional")
@@ -1030,6 +1191,8 @@ def render_lines(res: dict[str, Any], plan: dict[str, Any]) -> list[str]:
         L.append("")
 
     verdict = {"PASS": "通过", "FAIL": "未通过"}[res["verdict"]]
+    if res.get("merged"):
+        verdict += f"（{res['merged']['label']}）"
     L.append(f"组合结论：{verdict}（标准和单个策略相同：样本外和走步拼接 回撤 ≤ {max_dd:g}%、赚钱、盈亏因子 ≥ "
              f"{float(s.get('min_pf', 1.2)):g}、交易 ≥ {int(s.get('min_trades', 30))} 笔；训练段赚钱、回撤 ≤ {max_dd:g}%；"
              f"样本外盈亏因子不低于训练段的 {float(s.get('pf_ratio', 0.6)):g} 倍"
@@ -1073,10 +1236,10 @@ def csv_rows(res: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def write_outputs(run_dir: Path, res: dict[str, Any], lines: list[str]) -> None:
+def write_outputs(run_dir: Path, res: dict[str, Any], lines: list[str], stem: str = "portfolio") -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "portfolio.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    with (run_dir / "portfolio.csv").open("w", newline="", encoding="utf-8-sig") as fh:  # utf-8-sig：Excel 认中文
+    (run_dir / f"{stem}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with (run_dir / f"{stem}.csv").open("w", newline="", encoding="utf-8-sig") as fh:  # utf-8-sig：Excel 认中文
         w = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
         w.writeheader()
         for r in csv_rows(res):
@@ -1084,7 +1247,7 @@ def write_outputs(run_dir: Path, res: dict[str, Any], lines: list[str]) -> None:
     names = res["selection"]["selected"]
     data = dict(res)
     data["segments"] = {k: {**v, "corr": {"names": names, "matrix": v["corr"]}} for k, v in res.get("segments", {}).items()}
-    (run_dir / "portfolio.json").write_text(
+    (run_dir / f"{stem}.json").write_text(
         json.dumps(_clean(data), ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
     )
 
@@ -1110,17 +1273,118 @@ def report_lines(plan: dict[str, Any], rows: list[dict[str, Any]], strategies: A
 
 
 # ----------------------------------------------------------------------------
+# 合并多个运行目录（第 5 轮：XSFundingCarry 在币安那台服务器上跑，其他策略在 OKX 上跑）
+# ----------------------------------------------------------------------------
+_WINDOW_KEYS = (("train", "训练段"), ("test", "样本外"), ("holdout", "没看过的一段"))
+
+
+def merge_runs(loaded: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """loaded = [(plan, rows)]，按 --run-dirs 的顺序（plan 里要有 _run_dir）。返回 (合并后的 plan, 合并后的 rows)。
+
+    合并后的 plan = 第一个目录的 plan（区间切分、settings、挑选和判定都按它），加 _merged（每个目录的交易所、策略、区间，
+    区间不一样的地方，重名被跳过的策略，标签"跨交易所近似"/"多个运行目录合并（近似）"）。
+    每一行带上 _plan = 它自己那次研究的 plan（读K线用它自己的数据目录）。同一个策略（同一个参数版本）在几个目录里都有时用前面那个。"""
+    if not loaded:
+        raise ValueError("没有运行目录")
+    primary = loaded[0][0]
+    runs, out_rows, dups, wdiff = [], [], [], []
+    seen: dict[tuple[str, str], str] = {}
+    for plan, rows in loaded:
+        name = Path(str(plan.get("_run_dir") or "?")).name
+        kept = []
+        for r in rows:
+            key = (r["strategy"], r.get("variant", "default"))
+            if key in seen:
+                if r.get("variant", "default") == "default":
+                    dups.append(f"{r['strategy']} 在 {seen[key]} 和 {name} 里都有，用 {seen[key]} 的")
+                continue
+            seen[key] = name
+            r["_plan"] = plan
+            kept.append(r)
+            out_rows.append(r)
+        runs.append({
+            "run_dir": str(plan.get("_run_dir") or "?"), "exchange": str(plan.get("exchange") or ""),
+            "strategies": list(dict.fromkeys(r["strategy"] for r in kept)),
+            "train": list(plan["train"]), "test": list(plan["test"]),
+            "holdout": list(plan["holdout"]) if plan.get("holdout") else None,
+            "synthetic": bool(plan.get("synthetic")),
+            "prereg": _formal_of_plan(plan, kept),
+        })
+        if plan is not primary:
+            for k, cn in _WINDOW_KEYS:
+                a, b = primary.get(k), plan.get(k)
+                if (list(a) if a else None) != (list(b) if b else None):
+                    wdiff.append(f"{name} 的{cn}（{'~'.join(b) if b else '没有'}）和第一个目录（{'~'.join(a) if a else '没有'}）不一样")
+            fa = [f["test"] for f in (primary.get("wf") or {}).get("folds") or []]
+            fb = [f["test"] for f in (plan.get("wf") or {}).get("folds") or []]
+            if fa != fb:
+                wdiff.append(f"{name} 的走步各折和第一个目录不一样：走步拼接按各自的折算，每折收益按第一个目录的折切")
+            for key in ("fee", "max_dd"):
+                va, vb = (primary.get("settings") or {}).get(key), (plan.get("settings") or {}).get(key)
+                if va != vb:
+                    wdiff.append(f"{name} 的 {key} = {vb}，第一个目录 = {va}（判定按第一个目录）")
+    exchanges = list(dict.fromkeys(x["exchange"] for x in runs))
+    cross = len(exchanges) > 1
+    merged = dict(primary)
+    merged["_merged"] = {
+        "label": CROSS_EXCHANGE_LABEL if cross else "多个运行目录合并（近似）",
+        "cross_exchange": cross, "exchanges": exchanges, "runs": runs, "dups": dups, "window_diff": wdiff,
+    }
+    merged["synthetic"] = any(x["synthetic"] for x in runs)
+    return merged, out_rows
+
+
+def load_runs(run_dirs: list[Path]) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+    import research_report as rr
+
+    out = []
+    for d in run_dirs:
+        plan = rr.load_plan(d)
+        plan["_run_dir"] = str(d)
+        jobs = rr.load_jobs(d)
+        if not any(j["status"] == "ok" for j in jobs):
+            raise ValueError(f"{d} 里没有任何成功的回测结果")
+        out.append((plan, rr.build_rows(plan, jobs, rr.load_notes(d))))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="子账户组合检查：对已经跑完的研究目录重算组合结果（不重跑回测）")
-    p.add_argument("--run-dir", required=True, help="研究结果目录，例如 user_data/research/run_20261107_120000")
+    p.add_argument("--run-dir", default=None, help="研究结果目录，例如 user_data/research/run_20261107_120000")
+    p.add_argument("--run-dirs", nargs="+", default=None,
+                   help="合并几个研究目录（例如一个 OKX 的、一个币安的）的策略一起做组合检查，结果标注\"跨交易所近似\"；"
+                        "区间和判定按第一个目录；输出 portfolio-merged.txt/csv/json（默认写在第一个目录里）")
+    p.add_argument("--out-dir", default=None, help="--run-dirs 时输出写到哪个目录（默认第一个目录）")
     p.add_argument("--strategies", default=None, help='放进组合的策略，例如 "A,B,C"（默认：plan.json / RESEARCH_PORTFOLIO / 默认挑选规则）')
     p.add_argument("--weights", choices=["equal", "riskparity"], default=None, help="equal = 平均分（默认），riskparity = 按训练段波动率倒数分")
     p.add_argument("--no-write", action="store_true", help="只打印，不写 portfolio.txt/csv/json")
     p.add_argument("--max-dd", type=cd.max_dd_arg, default=None,
                    help="按这个回撤上限（%%）重新判定和挑选（默认 = plan.json 里记的值；plan.json 不改）")
     a = p.parse_args(argv)
+    if not a.run_dir and not a.run_dirs:
+        p.error("要给 --run-dir（一个研究目录）或 --run-dirs（合并几个研究目录）")
     os.chdir(ROOT_DIR)  # plan.json / jobs.tsv 里的路径都相对项目根目录
     import research_report as rr
+
+    if a.run_dirs:
+        dirs = ([Path(a.run_dir)] if a.run_dir else []) + [Path(x) for x in a.run_dirs]
+        dirs = list(dict.fromkeys(dirs))
+        try:
+            plan, rows = merge_runs(load_runs(dirs))
+        except (OSError, ValueError) as exc:
+            print(f"错误：{exc}")
+            return 3
+        out_dir = Path(a.out_dir) if a.out_dir else dirs[0]
+        cd.override_settings_max_dd(plan.setdefault("settings", {}), a.max_dd)
+        plan["_run_dir"] = str(out_dir)
+        res = build(plan, rows, a.strategies, a.weights)
+        lines = render_lines(res, plan)
+        print("\n".join(lines))
+        if not a.no_write:
+            write_outputs(out_dir, res, lines, stem="portfolio-merged")
+            print(f"\n已保存：{out_dir / 'portfolio-merged.txt'}  {out_dir / 'portfolio-merged.csv'}  "
+                  f"{out_dir / 'portfolio-merged.json'}")
+        return 0
 
     run_dir = Path(a.run_dir)
     plan = rr.load_plan(run_dir)

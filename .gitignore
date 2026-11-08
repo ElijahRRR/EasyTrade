@@ -24,6 +24,8 @@ user_data/freqaimodels/
 # 第 2 步策略研究（scripts/research.sh）的结果目录，和 hyperopt 的锁文件
 user_data/research/
 user_data/hyperopt.lock
+# 第 5 轮：新币上线日文件（scripts/build_listings.py 扫描本地 1d 数据生成；研究结果目录里有副本和 sha256）
+user_data/listings/
 # 第 4 轮币安模拟盘（scripts/run_dryrun.sh）：数据库、日志、看门狗状态、冻结的策略代码副本（含 NFI，GPL-3.0）；
 # 以前几轮留档的目录（user_data/dryrun.round-<日期>/，见 docs/forward-test.md 第 12 节）
 user_data/dryrun/

@@ -1,0 +1,17 @@
+{
+    // ============================================================
+    // NewListingShortHedged 在策略研究里的额外设置（配置片段，不单独使用）。
+    // scripts/research.sh 回测 NewListingShortHedged 时，自动把本文件叠加在研究配置
+    // （configs/config.okx-research-listings.json，第二阶段是币安的研究配置）后面，只对这个策略生效。
+    //
+    // 为什么：
+    //   1. max_open_trades 40：预注册规格（docs/round5-preregistration.md 第 2.4 节）的仓位上限是组合热度 6%（同时约 12 笔空单），
+    //      另外还有 1 笔 BTC 对冲单。研究配置默认只有 5 个名额，不加这个文件的话，freqtrade 只开得出 4 笔空单 + 1 笔对冲，
+    //      测的就不是预注册的策略了。40 只是"不让名额先于热度上限起作用"，不是新的规则（每笔多大由策略按止损距离算）。
+    //   2. position_adjustment_enable true：对冲单每天 00:00 UTC 按空单名义金额加减仓，没有它 freqtrade 不会调用调整函数
+    //      （策略类里也写了 True；这里再写一遍，防止研究配置里写了 false 把它关掉）。
+    // 实盘时它单独一个机器人、一个子账户，那个机器人的配置里也要写这两项。
+    // ============================================================
+    "max_open_trades": 40,
+    "position_adjustment_enable": true
+}
