@@ -1199,6 +1199,25 @@ def test_gate() -> None:
     for name, patch in cases:
         rc, out = gate({**good, **patch})
         check_true(f"{name} -> 退出码 1，打印原因", rc == 1 and "!!" in out, out)
+    # 归档只有 funding_rate 列（2026-11-08 VPS 上的真实归档）：和接口重叠足够多、一条不差、每个币都比过 -> 接受
+    eth = "ETH/USDT:USDT"
+    fr_ok = {**good, "rate_is_realized": False, "rate_column": "funding_rate", "overlap_rows_total": 17985,
+             "overlap_diff_rows_total": 0,
+             "pairs": {BTC: {"funding_gaps": [], "mark_gaps": [], "overlap_rows": 258, "archive_rows": 4859},
+                       eth: {"funding_gaps": [], "mark_gaps": [], "overlap_rows": 258, "archive_rows": 4859}}}
+    rc, out = gate(fr_ok)
+    check_true("只有 funding_rate 列，但重叠 17985 条一条不差、每个币都比过 -> 接受（退出码 0，写明理由）",
+               rc == 0 and "按实际结算的费率接受" in out, out)
+    fr_cases = [
+        ("只有 funding_rate 列，重叠里有 3 条不一样", {"overlap_diff_rows_total": 3}),
+        ("只有 funding_rate 列，重叠只有 500 条", {"overlap_rows_total": 500}),
+        ("只有 funding_rate 列，清单里没有差别条数", {"overlap_diff_rows_total": None}),
+        ("只有 funding_rate 列，ETH 有归档行却没比过", {"pairs": {**fr_ok["pairs"], eth: {"funding_gaps": [], "mark_gaps": [],
+                                                                                  "overlap_rows": 0, "archive_rows": 4859}}}),
+    ]
+    for name, patch in fr_cases:
+        rc, out = gate({**fr_ok, **patch})
+        check_true(f"{name} -> 退出码 1，打印原因", rc == 1 and "!!" in out and "funding_rate" in out, out)
     rc, out = gate({**good, "pairs": {BTC: {"funding_gaps": [], "mark_gaps": [["2026-05-01T00:00:00Z", "2026-05-01T09:00:00Z", 10.0]]}}})
     check_true("标记价格只缺 10 小时（不到一天）-> 只提醒，退出码 0", rc == 0, out)
     reg2 = TMP / "gate_reg2.json"

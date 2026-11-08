@@ -1236,6 +1236,9 @@ API_DAYS = 92               # OKX 资金费率接口只给最近约 92 天（研
 NEED_DAYS = 7               # XSFundingCarry 调仓要前 7 天的资金费：研究开始前 7 天起就要有
 GATE_MARK_GAP_H = 24        # 真实标记价格缺这么多小时以上 = 不能正式运行（更短的只提醒）
 TOOL = "scripts/okx_funding_archive.py"
+# 归档没有"实际结算的费率"列、只有 funding_rate 时（2026-11-08 VPS 上的真实归档就是这样）：
+# 和接口下的实际结算费率（realizedRate）重叠的行至少这么多条、一条差别都没有、而且每个有归档行的币都比到过，才接受
+RATE_OVERLAP_MIN = 1000
 
 
 def day(v):
@@ -1302,6 +1305,45 @@ def cmd_cover(path, start):
     return 0
 
 
+def rate_column_verified(m):
+    """费率列不是 real_funding_rate 一类时，用重叠核对证明它就是实际结算的费率：返回 (接受?, 说明)。"""
+    try:
+        total = int(m.get("overlap_rows_total") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    diff = m.get("overlap_diff_rows_total")
+    try:
+        diff = int(diff) if diff is not None else None
+    except (TypeError, ValueError):
+        diff = None
+    missing = []
+    for p, s in pairs_of(m).items():
+        if not isinstance(s, dict):
+            continue
+        try:
+            arch = int(first_of(s, "archive_rows", "archive_rows_added") or 0)
+            ov = int(s.get("overlap_rows") or 0)
+        except (TypeError, ValueError):
+            arch, ov = 0, 0
+        if arch > 0 and ov <= 0:
+            missing.append(p.split("/")[0])
+    why = []
+    if not m.get("overlap_checked") or m.get("overlap_mismatch"):
+        why.append("重叠核对没做或者对不上")
+    if total < RATE_OVERLAP_MIN:
+        why.append(f"重叠只有 {total} 条（至少要 {RATE_OVERLAP_MIN} 条）")
+    if diff is None:
+        why.append("清单里没有差别条数（overlap_diff_rows_total）")
+    elif diff > 0:
+        why.append(f"重叠的 {total} 条里有 {diff} 条不一样")
+    if missing:
+        why.append(f"{len(missing)} 个币有归档行却没有和接口比过：{' '.join(missing[:8])}")
+    if why:
+        return False, "；".join(why)
+    return True, (f"归档用的是 {m.get('rate_column')} 列（没有 real_funding_rate），可是和接口下的实际结算费率重叠的 {total} 条"
+                  f"一条都不差、每个币都比过：按实际结算的费率接受（2022-03 ~ 最近 3 个月以前没法逐条比，假设两列一样）")
+
+
 def cmd_summary(path):
     m = load(path)
     ms, me = span(m)
@@ -1323,7 +1365,12 @@ def cmd_summary(path):
     if realized is None:
         realized = str(rate).lower() in ("real_funding_rate", "realized_rate", "realizedrate")
     if not realized:
-        print("!! 资金费率用的不是\"实际结算的费率\"那一列（freqtrade 自己从接口下的是实际结算费率）：结果可能有偏差，先看 manifest 的 warnings")
+        ok_rate, why = rate_column_verified(m)
+        if ok_rate:
+            print(f"   {why}")
+        else:
+            print("!! 资金费率用的不是\"实际结算的费率\"那一列（freqtrade 自己从接口下的是实际结算费率），"
+                  f"重叠核对也不够证明两者一样（{why}）：不能正式运行")
     if mism:
         print("!! overlap_mismatch：归档和接口下的资金费在重叠的那段对不上（归档的费率列可能不是实际结算的费率），先查清楚再正式运行")
     elif not m.get("overlap_checked") or not m.get("overlap_rows_total"):
@@ -1367,7 +1414,12 @@ def cmd_gate(path, start, tool_path, registry, strategies, out_json):
         if not m.get("overlap_checked") or not m.get("overlap_rows_total"):
             problems.append("overlap_checked = false：归档和接口下的资金费一条都没有比到，费率列没有核对")
         if m.get("rate_is_realized") is not True:
-            problems.append(f"资金费率用的不是实际结算的费率那一列（rate_column = {m.get('rate_column')}）")
+            ok_rate, why = rate_column_verified(m)
+            if ok_rate:
+                notes.append(why)
+            else:
+                problems.append(f"资金费率用的不是实际结算的费率那一列（rate_column = {m.get('rate_column')}），"
+                                f"重叠核对也不够证明两者一样：{why}")
         if m.get("time_is_fallback"):
             problems.append("归档里没有结算时间列，用的是 timestamp 一类的列（time_is_fallback = true）")
         if m.get("mark_substitute") is not True:
@@ -1437,7 +1489,8 @@ def cmd_gate(path, start, tool_path, registry, strategies, out_json):
     for x in notes:
         print(f"   {x}")
     if not problems:
-        print("资金费历史归档的记录都对（重叠核对过、对得上；实际结算的费率；补了替身；全是现在登记的导入脚本做的；覆盖研究区间；没有洞）")
+        print("资金费历史归档的记录都对（重叠核对过、对得上；实际结算的费率（或者重叠核对证明一样）；补了替身；"
+              "全是现在登记的导入脚本做的；覆盖研究区间；没有洞）")
     if out_json:
         with open(out_json, "w", encoding="utf-8") as fh:
             json.dump({"ok": not problems, "problems": problems, "notes": notes}, fh, ensure_ascii=False, indent=1)
