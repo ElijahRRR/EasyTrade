@@ -1,5 +1,5 @@
 """
-基准策略的"封顶"子类 —— 本项目自己写的代码（不是第三方代码），用在 make research-benchmarks。
+基准策略的"封顶"子类 —— 本项目自己写的代码（不是第三方代码），用在 make research-benchmarks 和 make research-nfi-yearly。
 
 为什么要有它
   项目硬规则：杠杆 ≤ 5 倍。第三方基准策略 NostalgiaForInfinityX8（NFI）的 leverage() 默认返回 3 倍，
@@ -8,6 +8,19 @@
     * leverage() 算出来 > 5 倍时一律改成 5 倍（其他情况原样返回，默认就是上游的 3 倍）；
     * 配置里改过的 futures_mode_leverage* 设置 > 5 时也改成 5（日志里有警告）。
   其余逻辑和上游完全一样（继承，不复制、不修改上游代码）。
+  第 4 轮加了两个低杠杆版本（make research-nfi-yearly 逐年回测、以后币安模拟盘用；说明见 docs/nfi-yearly.md）：
+    * NostalgiaForInfinityX8Lev1：每一条杠杆路径都封顶 1 倍（= 不加杠杆）；
+    * NostalgiaForInfinityX8Lev2：每一条杠杆路径都封顶 2 倍。
+  它们是 NostalgiaForInfinityX8Capped 的子类，只把封顶值改小（类属性 _easytrade_leverage_cap），
+  其余（导入方式、回测时的止盈目标缓存隔离）完全相同；5 倍的 NostalgiaForInfinityX8Capped 行为不变。
+  "每一条杠杆路径"（按固定版本源码当文本读的，行号见 docs/nfi-yearly.md 第 3 节）：
+    1. leverage() 的返回值（freqtrade 只在开新仓时问一次，加仓沿用这笔交易的杠杆）；
+    2. 类属性 futures_mode_leverage / …_rebuy_mode / …_grind_mode（默认 3 倍）和
+       …_long / …_short 等 6 个按方向的覆盖值（默认 None = 不覆盖）——
+       配置顶层或 nfi_parameters 里都能改它们（上游 NFI_SAFE_PARAMETERS），这里在上游 __init__ 读完配置之后封顶；
+       上游 correct_min_stake() 也用 futures_mode_leverage 算币安的最小下单额，封顶后口径一致。
+  不归策略管、这里也管不了的一条：FreqUI / Telegram 的"强制开仓"可以自带 leverage 参数，freqtrade 直接用它、
+  不问策略的 leverage()。所以配置里 force_entry_enable 必须保持 false（configs/config.binance-futures.json 就是 false）。
   freqtrade-strategies 的基准策略杠杆最多 2 倍（VolatilitySystem 固定 2 倍，其余没写 leverage()，用 freqtrade 默认的 1 倍），
   不可能超过 5 倍，不需要封顶。研究报告还会再查每笔交易的实际杠杆（> 5 倍直接判不通过）。
 
@@ -21,13 +34,14 @@
   找不到就抛出 ImportError（中文提示），freqtrade 报"找不到这个策略"。
   不会影响其他策略：freqtrade 按名字找策略时，只导入文件内容里有 "class <策略名>(" 的文件；
   本文件又放在 user_data/strategies/benchmarks/ 子目录（不在 user_data/strategies/ 本层），
-  平时的 make backtest / make research 根本扫不到它，只有 make research-benchmarks（RESEARCH_BENCHMARKS=1）才用。
+  平时的 make backtest / make research 根本扫不到它，只有 make research-benchmarks（RESEARCH_BENCHMARKS=1）
+  和 make research-nfi-yearly（scripts/research_nfi_yearly.sh，把本文件和校验过的 NFI 文件复制到自己的结果目录里用）才用。
 
-手动单独回测（需要 5m 15m 1h 4h 1d 的K线，交易对里要有 BTC）：
+手动单独回测（需要 5m 15m 1h 4h 1d 的K线，交易对里要有 BTC；Lev1 / Lev2 同理，换 --strategy 和覆盖文件名）：
   .venv/bin/freqtrade backtesting --config configs/config.okx-research.json \\
       --config configs/research-overrides/NostalgiaForInfinityX8Capped.json \\
       --strategy NostalgiaForInfinityX8Capped --strategy-path user_data/strategies/benchmarks --timerange 20260101-
-说明：docs/benchmarks.md
+说明：docs/benchmarks.md、docs/nfi-yearly.md
 """
 
 from __future__ import annotations
@@ -46,6 +60,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # 项目硬规则：杠杆上限（和 scripts/check_drawdown.py 的 --max-leverage 默认值、研究报告的 max_leverage 相同）
+# 子类只能把封顶值改得更小（_easytrade_leverage_cap），任何情况下都不会超过它
 MAX_LEVERAGE = 5.0
 
 _HERE = Path(__file__).resolve().parent
@@ -79,15 +94,27 @@ def _load_vendor_class(file_name: str, class_name: str) -> type:
     return cls
 
 
-def _capped(value: Any) -> float:
-    """杠杆值封顶到 MAX_LEVERAGE；不是正常数字时按 1 倍（freqtrade 默认值）。"""
+def _cap_value(cap: Any) -> float:
+    """一个类的封顶值，限制在 1 ~ MAX_LEVERAGE 之间（大于 MAX_LEVERAGE 按 MAX_LEVERAGE）；写错（不是正常数字）按 1 倍，最保守。"""
+    try:
+        c = float(cap)
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(c):
+        return 1.0
+    return min(max(c, 1.0), MAX_LEVERAGE)
+
+
+def _capped(value: Any, cap: float = MAX_LEVERAGE) -> float:
+    """杠杆值封顶到 cap（默认 MAX_LEVERAGE，永远不超过它）；不是正常数字时按 1 倍（freqtrade 默认值）。"""
+    cap = _cap_value(cap)
     try:
         lev = float(value)
     except (TypeError, ValueError):
         return 1.0
     if not math.isfinite(lev) or lev <= 0:
         return 1.0
-    return min(lev, MAX_LEVERAGE)
+    return min(lev, cap)
 
 
 # 上游类（导入失败时整个文件导入失败，freqtrade 只会说找不到 NostalgiaForInfinityX8Capped，不影响别的策略）
@@ -96,6 +123,9 @@ NostalgiaForInfinityX8 = _load_vendor_class("NostalgiaForInfinityX8.py", "Nostal
 
 class NostalgiaForInfinityX8Capped(NostalgiaForInfinityX8):
     """NostalgiaForInfinityX8（固定版本，见 scripts/fetch_benchmarks.sh），杠杆封顶 5 倍；回测时止盈目标缓存每次从空开始。"""
+
+    # 这个类的杠杆封顶值（倍）。子类改小它就得到低杠杆版本（见文件末尾）；超过 MAX_LEVERAGE 的值不会生效
+    _easytrade_leverage_cap = MAX_LEVERAGE
 
     def __init__(self, config: dict) -> None:
         super().__init__(config)
@@ -108,18 +138,26 @@ class NostalgiaForInfinityX8Capped(NostalgiaForInfinityX8):
         self._easytrade_cap_leverage_settings()
         self._easytrade_fresh_backtest_cache(self.config, final=True)
 
+    def _easytrade_cap(self) -> float:
+        return _cap_value(type(self)._easytrade_leverage_cap)
+
     def _easytrade_cap_leverage_settings(self) -> None:
         # 上游允许从配置改的杠杆设置：futures_mode_leverage、futures_mode_leverage_rebuy_mode、…_long、…_short_grind_mode 等
+        cap = self._easytrade_cap()
         for name in [n for n in dir(type(self)) if n.startswith("futures_mode_leverage")]:
             value = getattr(self, name, None)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                continue  # None = 上游"不单独设置"，保持原样
+                continue  # None = 上游"不单独设置"，保持原样（leverage() 的返回值另外封顶）
             if value > MAX_LEVERAGE:
                 logger.warning(
                     "%s = %s 超过项目杠杆上限 %s 倍，改成 %s 倍（user_data/strategies/benchmarks/BenchmarkCaps.py）",
-                    name, value, MAX_LEVERAGE, MAX_LEVERAGE,
+                    name, value, MAX_LEVERAGE, cap,
                 )
-                setattr(self, name, MAX_LEVERAGE)
+                setattr(self, name, cap)
+            elif value > cap:
+                # 低杠杆版本：上游默认 3 倍 → 1 / 2 倍，是预期的，不算警告
+                logger.info("%s：%s = %s 按这个版本的封顶改成 %s 倍", type(self).__name__, name, value, cap)
+                setattr(self, name, cap)
 
     def _easytrade_fresh_backtest_cache(self, config: dict, final: bool = False) -> None:
         """回测 / 调参时把 NFI 的止盈目标缓存换成临时目录里的空文件。可以调用多次（已经换过就不动）。
@@ -170,4 +208,16 @@ class NostalgiaForInfinityX8Capped(NostalgiaForInfinityX8):
             side=side,
             **kwargs,
         )
-        return _capped(lev)
+        return _capped(lev, self._easytrade_cap())
+
+
+class NostalgiaForInfinityX8Lev1(NostalgiaForInfinityX8Capped):
+    """NFI X8 固定版本，每一条杠杆路径都封顶 1 倍（不加杠杆）。逐年回测、币安模拟盘用（docs/nfi-yearly.md）。"""
+
+    _easytrade_leverage_cap = 1.0
+
+
+class NostalgiaForInfinityX8Lev2(NostalgiaForInfinityX8Capped):
+    """NFI X8 固定版本，每一条杠杆路径都封顶 2 倍。逐年回测、币安模拟盘用（docs/nfi-yearly.md）。"""
+
+    _easytrade_leverage_cap = 2.0

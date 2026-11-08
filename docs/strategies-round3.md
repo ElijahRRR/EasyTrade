@@ -5,8 +5,12 @@
 > 两个策略都用到已有的共用代码（`easytrade_risk.py`、`rust_port_common.py`、`BigTrendShort.py`）。这一轮只改了 `easytrade_risk.py` 的三个风险默认值
 > （跟着回撤上限放大到 2 倍，见下面的更新），交易逻辑没有改；`rust_port_common.py`、`BigTrendShort.py` 没有改。
 >
-> **现状：只在合成数据上跑通了流程，还没有任何真实行情结果。** 下面写的"为什么可能有效"是思路和公开研究的大致结论，不是我们自己的结果。
+> **写这份文档时：只在合成数据上跑通了流程，还没有任何真实行情结果。** 下面写的"为什么可能有效"是思路和公开研究的大致结论，不是我们自己的结果。
 > 能不能用，要看你在 VPS 上用真实数据跑出来的样本外结果。
+>
+> **2026-11-07 VPS 真实结果：13 个策略 0 个通过**（本文的 XSMomentum、BigTrendShortLowRisk 都没通过；我们自己的日线策略都是"跟着行情走"，
+> 2021 ~ 2023 和样本外两段总有一段亏或者回撤超 15%）。原始报告和摘要：[`docs/research-runs/2026-11-07-round3/`](research-runs/2026-11-07-round3/README.md)。
+> 下一步（第 4 轮：冻结版 NFI 低杠杆逐年回测 + 币安模拟盘）：[`docs/nfi-yearly.md`](nfi-yearly.md)、[`docs/forward-test.md`](forward-test.md)。
 >
 > **2026-11-07 更新（David 决定）：账户权益（含浮亏）最大回撤上限从 8% 放宽到 15%**，杠杆上限 5 倍不变。
 > 上限只定义在一个地方（`scripts/check_drawdown.py` 的 `DEFAULT_MAX_DD_PCT`；shell 脚本用 `scripts/_common.sh` 里同样的值），

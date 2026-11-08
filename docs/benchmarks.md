@@ -199,9 +199,20 @@ MAX_DD_PCT=12 make research-benchmarks             # 换回撤上限（默认 15
 
 几点要心里有数：
 
-1. **加仓（DCA）策略的回撤是近似值**：我们的回撤检查按每笔交易**最终的**平均开仓价和数量算整个持仓期间的浮亏。
-   对一次开满的策略（我们自己的策略都是这样）是准的；对会加仓/分批平仓的 NFI、`VolatilitySystem`，持仓中间的浮亏可能被算多或算少。
-   可以同时看回测日志里 freqtrade 自己的 "Max % of account underwater"（只按平仓算，偏乐观）作对照。
+1. **加仓（DCA）策略的回撤按逐笔订单算**（第 4 轮起）：freqtrade 结果里每笔交易记的数量和平均开仓价是**最后的**值。
+   对会加仓/分批平仓的 NFI、`VolatilitySystem`，回撤检查（`scripts/check_drawdown.py`，研究报告也用它）按结果里的逐笔订单（orders）
+   重建每个时段的持仓数量和平均开仓价（和 freqtrade 自己的算法相同），分批平仓的盈亏记在成交那一刻，整笔平仓时再记剩下的部分。
+   一次开满的策略（我们自己的策略都是这样）结果和以前逐位相同。
+   - **第 3 轮的报告还是旧算法**（按最后的数量和均价套整个持仓期间，持仓中间的浮亏可能被算多或算少），NFI 训练段 30.26%、
+     样本外 9.28% 都是这样算的。不用重跑回测，在 VPS 上对原来的结果目录重新生成报告就是新算法的数：
+     `.venv/bin/python scripts/research_report.py report --run-dir <第 3 轮 5m 组的结果目录>`
+     （会重写这个目录里的 summary.txt 等报告文件，想留着旧版就先复制一份）。
+   - 自检：`.venv/bin/python scripts/check_drawdown_math.py`（手算的例子）；
+     加 `--result <某个 backtest-result-….zip>` 还会核对这个结果里每笔加仓交易的重建（各次平仓盈亏加起来 = freqtrade 的
+     profit_abs），并列出新旧两种算法的回撤。
+   - 还剩的近似：K线内部的价格顺序不知道，加仓 / 分批平仓那根K线按整根K线的最低价（空单最高价）算，偏保守；
+     资金费按 freqtrade 记的总额在平仓时计入。很旧的 freqtrade 结果没有 orders，会退回旧算法，并提醒一次（`make check` 在表格末尾，研究脚本在屏幕输出里）。
+   - 回测日志里 freqtrade 自己的 "Max % of account underwater" 只按平仓算（偏乐观），可以作对照。
 2. **频繁交易的策略被手续费吃得多**：5m 和 1h 的策略交易次数多，第 2 轮我们自己的 1h 策略就是这样亏掉的。每边 0.07% 是按实盘估的，不要为了基准策略调低。
 3. **幸存者偏差**：交易对是今天挑的"还活着的大币"，所有策略都偏乐观；做多的策略尤其占便宜。
 4. **资金费**：OKX 只给最近约 3 个月的资金费率，更早的按 0 算；拿得久的策略会显得偏好（表里的"样本外扣资金费"列有估算）。
@@ -230,3 +241,13 @@ MAX_DD_PCT=12 make research-benchmarks             # 换回撤上限（默认 15
 3. 算 sha256，把新的 commit 和 sha256 写进 `scripts/fetch_benchmarks.sh` 的清单，并更新本文第 2 节的表；
 4. NFI 换成新的主策略（例如 X9）时，还要改 `BenchmarkCaps.py` 里的文件名/类名、`configs/research-overrides/` 的文件名和 `scripts/research_benchmarks.sh` 的策略名；
 5. 在 VPS 上 `bash scripts/fetch_benchmarks.sh --force`。
+
+## 10. 第 4 轮：NFI 低杠杆版本逐年回测（接着这里往下做的）
+
+第 3 轮 `NostalgiaForInfinityX8Capped` 训练段回撤 30%、没过 15% 规则，而且它拿着亏损的仓位不平（样本外只看平仓的回撤 1.92%、含浮亏 9.28%）。
+第 4 轮把固定版本的 NFI 冻结，另外加了两个低杠杆版本 `NostalgiaForInfinityX8Lev1`（封顶 1 倍）、`NostalgiaForInfinityX8Lev2`（封顶 2 倍），
+也在 `BenchmarkCaps.py` 里，覆盖文件和 5 倍版本完全相同；然后 2021 年起**每个日历年单独回测一次**（包含 2022 年熊市），
+每个版本给一个"可以上模拟盘 / 不建议上模拟盘"的结论：`bash scripts/fetch_benchmarks.sh` → `make research-nfi-yearly`。
+NFI 的杠杆在源码里是怎么定的（带行号）、三个版本封住了哪些路径、要多久、怎么看结果：[`docs/nfi-yearly.md`](nfi-yearly.md)。
+那里的"通过"也只是合理性检查（NFI X8 在 2026-09 以后改了约 1200 次，每一年都可能是作者看过的），真正的检验是之后的币安模拟盘。
+（冻结版 NFI 1 倍杠杆的币安模拟盘、看门狗和前向报告：[`docs/forward-test.md`](forward-test.md)、[`docs/forward-monitoring.md`](forward-monitoring.md)。）
