@@ -3,7 +3,7 @@
   "spec_doc": "docs/round5-preregistration.md",
   "frozen": "2026-11-07",
   "run_settings": {
-    "_note": "规格 2 节和 3.3 节冻结的运行设置（scripts/research.sh 把这次的实际值传给 check_prereg.py --settings 对照，不一样 = 拒绝正式运行）。策略和阶段的 run_settings 覆盖这里的同名项。",
+    "_note": "规格 2 节和 3.3 节冻结的运行设置（scripts/research.sh 把这次的实际值传给 check_prereg.py --settings 对照，不一样 = 拒绝正式运行）。策略和阶段的 run_settings 覆盖这里的同名项。funding_archive（2026-11-08 加）= research.sh --funding-archive：0 = 不用 OKX 资金费历史归档（所有策略的默认），只有 XSFundingCarry 登记为 okx。datadir（2026-11-08 复查后加）= research.sh 实际用的数据目录（相对项目根目录），只有 XSFundingCarry 登记了（user_data/data/okx-funding），其他策略不对照。",
     "fee": 0.0007,
     "max_dd": 15,
     "min_trades": 30,
@@ -21,15 +21,21 @@
     "warmup_candles": 600,
     "keep_delisted": 0,
     "pre_holdout": "",
-    "pre_holdout_pairs": ""
+    "pre_holdout_pairs": "",
+    "funding_archive": "0"
   },
   "strategies": {
     "XSFundingCarry": {
       "file": "user_data/strategies/XSFundingCarry.py",
       "class": "XSFundingCarry",
-      "sha256": "7648627206d35c91777058a4bd0088bb20a919860d4c42bdbe5a3f0628da30ce",
-      "venue": "binance",
-      "config": "configs/config.binance-research.json",
+      "sha256": "eeed49e28dd54258f63522d1b565e6402624243ae40239c82e6590666e63e85c",
+      "venue": "okx",
+      "stage": "1",
+      "stage_note": "2026-11-08 复查后加：OKX 这次正式运行记为第 1 阶段（正式运行记录里 stage = \"1\"）。以后上实盘之前加币安复核时，改成 stages {\"1\": OKX（config.okx-research-funding.json），\"2\": 币安}，第 1 阶段仍然是 OKX，这样 OKX 再跑一次照样算重复运行。",
+      "venue_original": "binance",
+      "config": "configs/config.okx-research-funding.json",
+      "config_original": "configs/config.binance-research.json",
+      "venue_decision": "2026-11-08 David 决定：研究都在美国 VPS 上用 OKX 数据跑，要用币安的推迟到整个项目准备上模拟盘 / 实盘时再做；XSFundingCarry 改在 OKX 上测，资金费率用 OKX 官方历史数据归档（2022-03 起，scripts/okx_funding_archive.py 导入单独的数据目录 user_data/data/okx-funding）。这个决定是在 XSFundingCarry 任何真实数据回测之前、出于基础设施原因做的，策略的代码、参数、门槛和附加检查都没改（策略文件只改了开头说明里讲数据的那一段，所以 sha256 重新登记了一次）。后果：研究区间从 2022-04-01 到现在（约 4.6 年，原来是 2021 年起）；没有 2020 留出段（OKX 2022-03 以前没有资金费历史）；OKX 只有最近约 3 个月的标记价格，更早的用同一个币的 1h 合约K线代替（只影响资金费金额，约 0.1%）；在 OKX 上通过不等于在币安上通过：上实盘之前必须再用币安数据回测或币安模拟盘复核。详见 docs/round5-preregistration.md 6.5 节。",
       "override": "configs/research-overrides/XSFundingCarry.json",
       "timeframe": "1d",
       "params": {
@@ -58,7 +64,16 @@
         "user_data/strategies/rust_port_common.py": "c6eb3746ccfc73478fd26ec433ae47258c243549f3b46be0d85f0ee7aac5de95",
         "configs/research-overrides/XSFundingCarry.json": "4dfa6f2da45bcdf51704693762dd32ffa32be5f25cf04bd8cc3529f9731e93b2"
       },
+      "pinned_tools": {
+        "scripts/okx_funding_archive.py": "05bd5388e06333bf86b05fd27112a94d98ac2f37c0b71020c38ef84b21eb0797"
+      },
       "run_settings": {
+        "start": "20220401",
+        "pre_holdout": "",
+        "funding_archive": "okx",
+        "datadir": "user_data/data/okx-funding"
+      },
+      "run_settings_original": {
         "pre_holdout": "20200101-20201231"
       }
     },
@@ -114,7 +129,8 @@
           "note": "只有第一阶段通过才跑：币安 2021-2026，包括已下架的币；在币安服务地区的服务器上跑，配置和币池在那之前定好并写进 changes",
           "run_settings": {
             "keep_delisted": 1
-          }
+          },
+          "deferred": "2026-11-08 David 决定：要用币安的部分（这个第二阶段）推迟到整个项目准备上模拟盘 / 实盘时再做；第一阶段照旧在美国 VPS 上用 OKX 数据跑，不受影响。"
         }
       },
       "override": "configs/research-overrides/CapitulationRebound.json",
@@ -167,7 +183,8 @@
             "warmup_candles": 0,
             "keep_delisted": 1,
             "pre_holdout": "20200101-20201231"
-          }
+          },
+          "deferred": "2026-11-08 David 决定：要用币安的部分（这个第二阶段）推迟到整个项目准备上模拟盘 / 实盘时再做；第一阶段照旧在美国 VPS 上用 OKX 数据跑，不受影响。"
         }
       },
       "override": "configs/research-overrides/NewListingShortHedged.json",

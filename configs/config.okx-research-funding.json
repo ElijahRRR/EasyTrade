@@ -1,0 +1,72 @@
+{
+    // ============================================================
+    // 第 5 轮"运行 C"：XSFundingCarry 用 OKX 数据的研究配置（scripts/research.sh / make research 使用）
+    //
+    // 为什么有这个文件（2026-11-08 David 的决定，在 XSFundingCarry 任何真实数据回测之前）：
+    //   研究都在美国 VPS 上用 OKX 数据跑；要用币安的（原来的运行 C、两个策略的第二阶段）推迟到整个项目准备上模拟盘 / 实盘时再做。
+    //   OKX 的资金费率接口只给最近约 3 个月，可是 OKX 官网的"历史数据"页面有 2022-03 起的全部永续资金费率（官方归档文件）。
+    //   scripts/okx_funding_archive.py 把归档里的资金费率导入数据目录，XSFundingCarry 就能在 OKX 上测 2022-04 以后的约 4.6 年。
+    //   登记表 configs/preregistration.json 里 XSFundingCarry 的 venue_decision 写了这个决定和它的后果。
+    //
+    // 和 config.okx-research.json 完全一样（OKX USDT 永续、同一个 60 个币的币池 pairs.okx-research.json、逐仓、1000 USDT、
+    // 只回测不下单、手续费由研究脚本的 --fee 0.0007 给），只多了一项：
+    //   "datadir": "user_data/data/okx-funding" —— 单独一个数据目录，只给 XSFundingCarry 用。
+    //   归档导入的老资金费率、补出来的老标记价格只放在这里，绝不放进 user_data/data/okx：
+    //   那个目录是运行 A / B 和 NFI 回测用的，往里加资金费会悄悄改掉它们的结果。
+    //
+    // !! 注意：freqtrade 2026.10 自己不读配置文件里的 "datadir"（只认命令行的 --datadir，没写就用 user_data/data/okx）。
+    // !! 本项目的脚本（research.sh、download_okx_data.sh、round5_week_check.sh、okx_funding_archive.py）会读这一项、
+    // !! 自动加上 --datadir。自己手工运行 freqtrade 时一定要加：--datadir user_data/data/okx-funding
+    //
+    // 数据怎么来（make okx-funding-data，第一次要几十分钟；以后只补新的）：
+    //   1. 先把 user_data/data/okx 里已有的合约K线复制过来（只复制K线，省得重下；复制，不是链接）；
+    //   2. bash scripts/download_okx_data.sh --config configs/config.okx-research-funding.json --timeframes "1h 4h 1d"
+    //      （K线补齐；标记价格和资金费率照常只下最近 120 天）；
+    //   3. .venv/bin/python scripts/okx_funding_archive.py update --config configs/config.okx-research-funding.json
+    //      （下载 OKX 官方归档里 2022-03 起的资金费率，合并进 futures/<币>_USDT_USDT-1h-funding_rate.feather；
+    //       接口下的那几个月以接口为准；OKX 的标记价格也只有最近约 3 个月，更早的时间用同一个币的 1h 合约K线代替，
+    //       两者一般只差 0.1% 左右，对资金费的影响可以忽略；每个币补了多少行记在 okx_funding_archive/manifest.json）。
+    //   make research 带 XSFundingCarry 时第 1 步会自动做 2、3 两步。
+    //
+    // 用法（预注册"运行 C"，登记表里的设置：从 2022-04-01 开始，没有 2020 留出段）：
+    //   make research ARGS="--config configs/config.okx-research-funding.json --strategies XSFundingCarry --start 20220401"
+    //
+    // futures_funding_rate = 0 照旧：现在只用在"一个币第一条资金费记录之前"那一段（freqtrade 只往前填开头缺的部分），
+    //   2022-03 以前 OKX 没有资金费历史，研究也从 2022-04 才开始，所以实际上用不到。
+    // 不需要 API Key（只用公开行情）；密钥、服务器地址一律不要写进本文件。
+    // ============================================================
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "add_config_files": [
+        "config.base.json",
+        "pairs.okx-research.json"
+    ],
+
+    // 只给 XSFundingCarry 用的数据目录（见上面的说明；freqtrade 本身不读这一项，脚本会转成 --datadir）
+    "datadir": "user_data/data/okx-funding",
+
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "max_open_trades": 5,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.95,
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    "exchange": {
+        // 回测只用公开行情，不需要 API Key
+        "name": "okx",
+        "key": "",
+        "secret": "",
+        "password": "",
+        "ccxt_config": {},
+        "ccxt_async_config": {}
+    },
+
+    "pairlists": [
+        { "method": "StaticPairList" }
+    ],
+
+    // 第一条资金费记录之前的时间段按"资金费为 0"计算（同 config.okx-research.json；有归档以后实际用不到）
+    "futures_funding_rate": 0
+}

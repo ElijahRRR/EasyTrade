@@ -32,7 +32,7 @@ pull:  ## 拉取 Docker 镜像
 
 validate:  ## 校验所有入口配置（freqtrade show-config）
 	@source scripts/_common.sh; \
-	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.binance-xsmomentum.json configs/config.binance-research.json configs/config.okx-research-listings.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json configs/config.dryrun-nfi.json; do \
+	for c in configs/config.okx-backtest.json configs/config.okx-research.json configs/config.binance-futures.json configs/config.binance-xsmomentum.json configs/config.binance-research.json configs/config.okx-research-listings.json configs/config.okx-research-funding.json configs/config.okx-pairlist-volume.json configs/config.synthetic-test.json configs/config.dryrun-nfi.json; do \
 		if ft show-config --config $$c > /dev/null 2>&1; then echo "通过  $$c"; \
 		else echo "失败  $$c"; ft show-config --config $$c 2>&1 | tail -n 20; exit 1; fi; \
 	done
@@ -62,11 +62,36 @@ prereg-write:  ## 第 5 轮（整合的人用）：策略文件定稿后，计�
 download-spot:  ## 第 5 轮：只下 OKX 现货 BASE/USDT 1h（PremiumFade 用；默认 2019-11-01 起，含 2020 留出段和预热；ARGS 里的 --timerange 会覆盖）
 	bash scripts/download_okx_data.sh --spot-only --config configs/config.okx-research.json --timerange 20191101- $(ARGS)
 
-pipeline-week:  ## 第 5 轮管道检查：一个策略回测一周（默认 2026-11-01 ~ 11-07），只打印交易笔数和 funding_fees 是否非零，不打印收益（ARGS="--strategy XSFundingCarry --config configs/config.binance-research.json"）
+pipeline-week:  ## 第 5 轮管道检查：一个策略回测一周（默认 2026-11-01 ~ 11-07），只打印交易笔数和 funding_fees 是否非零，不打印收益（ARGS="--strategy XSFundingCarry --config configs/config.okx-research-funding.json"）
 	bash scripts/round5_week_check.sh $(ARGS)
 
 listings:  ## 第 5 轮：扫描本地 1d 永续K线，生成新币上线日文件 user_data/listings/<数据目录名>_first_candle.json（NewListingShortHedged 用；make research 会自动做；ARGS="--datadir user_data/data/okx --data-start 20190101"）
 	@source scripts/_common.sh; py_ft scripts/build_listings.py $(ARGS)
+
+# ---------- 第 5 轮运行 C：XSFundingCarry 用 OKX 资金费历史归档（2026-11-08 起；配置 configs/config.okx-research-funding.json，
+# 数据目录 user_data/data/okx-funding，只给 XSFundingCarry 用，绝不写进 user_data/data/okx；脚本说明见 scripts/okx_funding_archive.py） ----------
+.PHONY: okx-funding-probe okx-funding-data okx-funding-status okx-funding-check
+OKX_FUNDING_CONFIG := configs/config.okx-research-funding.json
+ARCHIVE_ARGS ?=
+
+okx-funding-probe:  ## 运行 C：第一次导入前先看一眼 OKX 资金费归档接口返回的格式（要联网：1 次列表请求 + 下载 1 个文件；ARGS="--family ETH-USDT --month 2024-05" 或 "--lister priapi"）
+	@source scripts/_common.sh; py_ft scripts/okx_funding_archive.py probe $(ARGS)
+
+okx-funding-data:  ## 运行 C：准备 user_data/data/okx-funding（复制 user_data/data/okx 已有的合约K线 → 下载 2020-08 起的K线（研究 2022-04 开始 + 600 天预热）和最近 120 天的标记价格/资金费 → 导入 2022-03 起的资金费归档、更早的标记价格用K线代替；第一次几十分钟。ARGS 给下载脚本，ARCHIVE_ARGS 给导入脚本）
+	@source scripts/_common.sh; CFG="$(OKX_FUNDING_CONFIG)"; \
+	if [ -d user_data/data/okx/futures ]; then py_ft scripts/okx_funding_archive.py seed --config "$$CFG" --from user_data/data/okx; \
+	else echo "（user_data/data/okx 里没有合约K线，不复制，全部重新下载）"; fi; \
+	rc=0; bash scripts/download_okx_data.sh --config "$$CFG" --timeframes "1h 4h 1d" --timerange 20200801- $(ARGS) || rc=$$?; \
+	if [ $$rc -ne 0 ]; then echo "!! 下载有出错的步骤（退出码 $$rc），照样试着导入归档（还没有接口资金费的币导入脚本会拒绝，免得以后没法核对）；网络好了以后再运行一次 make okx-funding-data"; fi; \
+	urc=0; py_ft scripts/okx_funding_archive.py update --config "$$CFG" $(ARCHIVE_ARGS) || urc=$$?; \
+	if [ $$urc -ne 0 ]; then echo "!! 资金费归档导入没有完成（退出码 $$urc：1 = 参数不对或者有币还没有接口下载的资金费（先让下载成功）；2 = 联网出错，重新运行接着下；3 = 格式认不出来，先 make okx-funding-probe）"; exit $$urc; fi; \
+	exit $$rc
+
+okx-funding-status:  ## 运行 C：看 user_data/data/okx-funding 的资金费归档清单（每个币多少条、从哪天开始、替身标记价格多少根、和接口数据的重叠核对）
+	@source scripts/_common.sh; py_ft scripts/okx_funding_archive.py status --config "$(OKX_FUNDING_CONFIG)" $(ARGS)
+
+okx-funding-check:  ## 只跑资金费归档导入的自检（假的 HTTP 层 + 合成数据的端到端回测，不联网，约半分钟；make guard-test 里也有；ARGS="--no-e2e" 只要几秒）
+	@source scripts/_common.sh; py_ft scripts/check_okx_funding_archive.py $(ARGS)
 
 research-benchmarks:  ## 基准策略研究：别人公开的策略（freqtrade-strategies、NFI）用同一套流程比较，只用默认参数（先 bash scripts/fetch_benchmarks.sh；见 docs/benchmarks.md）
 	bash scripts/research_benchmarks.sh $(ARGS)
@@ -87,8 +112,8 @@ synthetic-data-binance:  ## 生成"像币安"的合成数据 → user_data/data/
 synthetic-test:  ## 用合成数据离线自检整条流程（回测 + 回撤检查 + 未来函数检查）
 	bash scripts/synthetic_test.sh $(ARGS)
 
-guard-test:  ## 实盘保护逻辑 + 回撤算法 + 模拟盘工具 + 研究报告自检（止损补救、只在信号刚收盘时入场、模拟盘配置、加仓/分批平仓的含浮亏回撤、前向报告和看门狗、子账户组合算法、第 5 轮报告的登记表规则和附加检查、第 5 轮的资金费窗口 / 下架币 / 正式运行规则；不联网，十几秒）
-	@source scripts/_common.sh; py_ft scripts/check_live_guards.py && py_ft scripts/check_drawdown_math.py && py_ft scripts/check_forward_tools.py && py_ft scripts/check_portfolio_math.py && py_ft scripts/check_report_round5.py && py_ft scripts/check_round5_guards.py
+guard-test:  ## 实盘保护逻辑 + 回撤算法 + 模拟盘工具 + 研究报告自检（止损补救、只在信号刚收盘时入场、模拟盘配置、加仓/分批平仓的含浮亏回撤、前向报告和看门狗、子账户组合算法、第 5 轮报告的登记表规则和附加检查、第 5 轮的资金费窗口 / 下架币 / 正式运行规则、OKX 资金费归档导入（含一次合成数据的端到端回测）；不联网，约 1 分钟）
+	@source scripts/_common.sh; py_ft scripts/check_live_guards.py && py_ft scripts/check_drawdown_math.py && py_ft scripts/check_forward_tools.py && py_ft scripts/check_portfolio_math.py && py_ft scripts/check_report_round5.py && py_ft scripts/check_round5_guards.py && py_ft scripts/check_okx_funding_archive.py
 
 forward-check:  ## 只跑前向报告 + 看门狗自检（合成数据库 + 本机假接口，不联网，几秒钟；make guard-test 也会跑）
 	@source scripts/_common.sh; py_ft scripts/check_forward_tools.py

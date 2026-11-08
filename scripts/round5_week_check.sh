@@ -7,7 +7,9 @@
 #   交易笔数（按 enter_tag 分）、有交易的币几个、funding_fees 不为 0 的交易几笔。收益、盈亏一概不打印。
 #
 # 用法：
-#   bash scripts/round5_week_check.sh --strategy XSFundingCarry --config configs/config.binance-research.json
+#   bash scripts/round5_week_check.sh --strategy XSFundingCarry --config configs/config.okx-research-funding.json
+#        ↑ 2026-11-08 起运行 C 在 OKX 上跑（数据目录 user_data/data/okx-funding，先 make okx-funding-data）
+#   bash scripts/round5_week_check.sh --strategy XSFundingCarry --config configs/config.binance-research.json   # 以后币安复核用
 #   bash scripts/round5_week_check.sh --strategy PremiumFade                      # 默认配置 configs/config.okx-research.json
 #   bash scripts/round5_week_check.sh --strategy NewListingShortHedged --config configs/config.okx-research-listings.json
 #   make pipeline-week ARGS="--strategy CapitulationRebound"
@@ -15,7 +17,8 @@
 #   --strategy S        策略类名（必填）
 #   --config CFG        研究配置（可以写多次，按顺序叠加；默认 configs/config.okx-research.json）。
 #                       configs/research-overrides/<S>.json 存在时自动叠加在最后（和 make research 一样）
-#   --datadir DIR       数据目录（默认按配置的交易所）
+#   --datadir DIR       数据目录（默认 = 配置里写的 "datadir"，没写就按配置的交易所；freqtrade 本身不读配置里的 datadir，
+#                       本脚本替它加上 --datadir）
 #   --timerange A-B     默认 20261101-20261108（= 2026-11-01 ~ 2026-11-07 这一周）
 #   --synthetic         合成数据（不联网，用 scripts/ft_offline.py；数据目录默认 user_data/data/okx-synthetic）
 # 结果和完整日志：user_data/backtest_results/round5_week/<策略>_<时间>/（不提交 git）。
@@ -40,7 +43,7 @@ while [[ $# -gt 0 ]]; do
         --datadir)   DATADIR="${2:-}"; shift 2 ;;
         --timerange) TIMERANGE="${2:-}"; shift 2 ;;
         --synthetic) SYNTH="yes"; shift ;;
-        -h|--help)   sed -n '2,29p' "$0"; exit 0 ;;
+        -h|--help)   sed -n '2,/^# -----/p' "$0"; exit 0 ;;
         *) echo "参数错误：不认识 $1（见 bash scripts/round5_week_check.sh --help）" >&2; exit 2 ;;
     esac
 done
@@ -50,6 +53,11 @@ if [[ ${#CONFIGS[@]} -eq 0 ]]; then CONFIGS=("configs/config.okx-research.json")
 if [[ "$SYNTH" == "yes" ]]; then
     FT_RUNNER_RESOLVED=synthetic
     [[ -n "$DATADIR" ]] || DATADIR="user_data/data/okx-synthetic"
+elif [[ -z "$DATADIR" ]]; then
+    # 配置里写了 "datadir"（例如 config.okx-research-funding.json 的 user_data/data/okx-funding）：freqtrade 2026.10 自己不读这一项
+    DATADIR="$(py_ft -c "import sys
+from freqtrade.configuration.load_config import load_from_files
+print(str(load_from_files(sys.argv[1:]).get('datadir') or ''))" "${CONFIGS[@]}" 2> /dev/null | tail -n 1 || true)"
 fi
 
 ARGS=()

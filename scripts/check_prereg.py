@@ -19,6 +19,13 @@
   "formal_runs"（可选）：已经做过的正式运行（从本机的 user_data/research/formal_runs.jsonl 抄过来、提交 git），同一个类 + 阶段再跑 = 重复运行。
   "pinned_files" {路径: sha256}：write 时和策略文件一起固定的文件 = 策略 import 的本地模块（easytrade_risk.py 混入类等）
   和它自己的 configs/research-overrides/<类名>.json；改了它们和改策略文件一样，check 时不一致 = 拒绝。
+  "pinned_tools" {路径: sha256}（可选，2026-11-08 起）：不是策略 import 的、但决定数据长什么样的脚本
+  （XSFundingCarry 的 scripts/okx_funding_archive.py：把 OKX 官方归档的资金费率导入数据目录）。
+  check 时和 pinned_files 一样核对（不一致 = 拒绝）；值还不是 64 位十六进制（例如 "PENDING"）= 还没固定：
+  合成数据 / 只做数据检查只提醒，正式运行拒绝。write 时按现在的文件重新计算（"PENDING" 直接填上，已经固定过又变了要 --force）。
+  pinned_files 的"集合必须和现在一样"那条规则不管 pinned_tools（工具脚本由登记表自己列出来）。
+  run_settings 里的 "funding_archive"（2026-11-08 起）：research.sh --funding-archive 的值（okx = 用 OKX 资金费历史归档，0 = 不用），
+  和其他运行设置一样对照（全局写 "0"，只有 XSFundingCarry 写 "okx"）。
   "min_pf_pending_decision"（或 min_pf 写成 {"value", "pending_decision": true}）= 还没定的决定：合成数据照常跑（只提醒），
   正式运行拒绝，直到在登记表里定下来（预注册 2.1 节："必须在正式运行之前定下来"）。
 
@@ -292,6 +299,40 @@ def check_pinned(ent: dict[str, Any], sdir: Path) -> str:
     return ("登记时一起固定的文件改过：" + "；".join(bad)) if bad else ""
 
 
+def check_pinned_tools(ent: dict[str, Any]) -> tuple[str, list[str]]:
+    """登记表里的 "pinned_tools" {路径: sha256}（决定数据长什么样的脚本，按仓库路径找）。
+    返回 (不一致的原因，一致 = "", 还没固定的路径列表)。值不是 64 位十六进制（例如 "PENDING"）= 还没固定，不算不一致。"""
+    tools = ent.get("pinned_tools")
+    if not tools:
+        return "", []
+    if not isinstance(tools, dict):
+        return "登记表里 pinned_tools 不是 {路径: sha256}", []
+    bad, pending = [], []
+    for path_txt, want in tools.items():
+        want_s = str(want or "").strip().lower()
+        f = repo_path(str(path_txt))
+        if not SHA_RE.match(want_s):
+            pending.append(str(path_txt))
+        elif not f.is_file():
+            bad.append(f"{path_txt} 不存在")
+        elif sha256_file(f) != want_s:
+            bad.append(f"{path_txt} 的 sha256 是 {_short(sha256_file(f))}…，登记的是 {_short(want_s)}…")
+    return (("登记时一起固定的工具脚本改过：" + "；".join(bad)) if bad else ""), pending
+
+
+def tools_now(ent: dict[str, Any]) -> tuple[dict[str, str], list[str]]:
+    """write 用：pinned_tools 里每个路径现在的 sha256。返回 ({路径: sha256}, 找不到的路径)。"""
+    tools = ent.get("pinned_tools") if isinstance(ent.get("pinned_tools"), dict) else {}
+    out, missing = {}, []
+    for path_txt in tools:
+        f = repo_path(str(path_txt))
+        if f.is_file():
+            out[str(path_txt)] = sha256_file(f)
+        else:
+            missing.append(str(path_txt))
+    return out, missing
+
+
 def pending_decisions(ent: dict[str, Any]) -> list[str]:
     """登记表里标成"待定"的决定（和 scripts/research_report.py prereg_rules 认的写法一样）。"""
     out = []
@@ -456,6 +497,18 @@ def cmd_check(a: argparse.Namespace) -> int:
                 pp = repo_path(str(ptxt))
                 if pp.is_file() and pp not in files_for_git:
                     files_for_git.append(pp)
+            # 一起固定的工具脚本（pinned_tools：决定数据长什么样，例如 scripts/okx_funding_archive.py）
+            tools = ent.get("pinned_tools")
+            tool_err, tool_pending = check_pinned_tools(ent)
+            if isinstance(tools, dict) and tools:
+                rec["pinned_tools_now"] = {}
+                for ptxt in tools:
+                    pp = repo_path(str(ptxt))
+                    rec["pinned_tools_now"][str(ptxt)] = sha256_file(pp) if pp.is_file() else None
+                    if pp.is_file() and pp not in files_for_git:
+                        files_for_git.append(pp)
+            if tool_pending:
+                rec["pinned_tools_pending"] = tool_pending
             # 交易所：可以写一个（"venue"），也可以写列表（"venues"，两个阶段在不同交易所跑的策略）
             raw_v = ent.get("venues", ent.get("venue"))
             venues = [str(v).lower() for v in (raw_v if isinstance(raw_v, list) else [raw_v]) if v]
@@ -522,6 +575,8 @@ def cmd_check(a: argparse.Namespace) -> int:
                 why = pin_err
             elif set_err := check_pinned_set(ent, n, cur, sdir):
                 why = set_err
+            elif tool_err:
+                why = tool_err
             rec["match"] = not why
             if why:
                 rec["mismatch"] = why
@@ -546,6 +601,10 @@ def cmd_check(a: argparse.Namespace) -> int:
                 rec["pending_decisions"] = pend
                 if not lenient:
                     problems.append(f"{n}：登记表里还有待定的决定（{'；'.join(pend)}），预注册要求在正式运行之前定下来")
+            if tool_pending:
+                msg = (f"登记表里一起固定的工具脚本还没有 sha256（{'、'.join(tool_pending)}；"
+                       "整合的人先运行：python3 scripts/check_prereg.py write）")
+                (warnings if lenient else problems).append(f"{n}：{msg}")
             if earlier and not a.synthetic:
                 warnings.append(
                     f"{n}：{'第 ' + stage + ' 阶段' if stage else ''}已经正式运行过（"
@@ -591,6 +650,11 @@ def cmd_check(a: argparse.Namespace) -> int:
         pin_state = [committed(rel(repo_path(str(p)))) for p in pins] if isinstance(pins, dict) else []
         r["pinned_committed"] = (None if not git_ok else True) if not pin_state else (
             None if None in pin_state else all(pin_state))
+        # 一起固定的工具脚本（pinned_tools，例如 scripts/okx_funding_archive.py）也要先提交
+        tools = (r.get("registry_entry") or {}).get("pinned_tools") if r["registered"] else None
+        tool_state = [committed(rel(repo_path(str(p)))) for p in tools] if isinstance(tools, dict) else []
+        r["pinned_tools_committed"] = (None if not git_ok else True) if not tool_state else (
+            None if None in tool_state else all(tool_state))
         not_formal: list[str] = []
         if r["registered"]:
             if not git_ok:
@@ -600,6 +664,9 @@ def cmd_check(a: argparse.Namespace) -> int:
                     not_formal.append(f"策略文件 {r['registered_file']} 没有提交或者有未提交的改动")
                 if r["pinned_committed"] is not True:
                     not_formal.append("一起固定的文件没有提交或者有未提交的改动")
+                if r["pinned_tools_committed"] is not True:
+                    not_formal.append("一起固定的工具脚本（pinned_tools："
+                                      + "、".join(str(p) for p in (tools or {})) + "）没有提交或者有未提交的改动")
                 if reg_committed is not True:
                     not_formal.append(f"登记表 {rel(reg_path)} 没有提交或者有未提交的改动")
                 if frozen_dirty:
@@ -616,7 +683,8 @@ def cmd_check(a: argparse.Namespace) -> int:
         r["not_formal_reasons"] = not_formal
         r["formal"] = bool(
             r["registered"] and r.get("match") and not allow and not lenient and not reg_err
-            and not r.get("run_mismatch") and not r.get("pending_decisions") and not not_formal
+            and not r.get("run_mismatch") and not r.get("pending_decisions") and not r.get("pinned_tools_pending")
+            and not not_formal
         )
     formal_run = bool(registry) and bool(registered) and all(strategies[n]["formal"] for n in registered)
     nf_reasons = list(dict.fromkeys(x for n in registered for x in strategies[n]["not_formal_reasons"]))
@@ -684,6 +752,9 @@ def cmd_check(a: argparse.Namespace) -> int:
                 extra += f"；!! {msg}" + ("（合成数据只提醒）" if a.synthetic else ("（只做数据检查，只提醒）" if a.pipeline_only else ""))
             if r.get("pending_decisions"):
                 extra += f"；!! 待定：{'；'.join(r['pending_decisions'])}" + ("（合成数据不影响）" if a.synthetic else ("（只做数据检查不影响）" if a.pipeline_only else ""))
+            if r.get("pinned_tools_pending"):
+                extra += (f"；!! 工具脚本还没固定 sha256：{'、'.join(r['pinned_tools_pending'])}"
+                          + ("（合成数据只提醒）" if a.synthetic else ("（只做数据检查只提醒）" if a.pipeline_only else "（正式运行拒绝）")))
             print(f"  - {n}：已登记，sha256 一致（{_short(r['sha256'])}…，{r['file']}）{extra}")
         elif r["status"] == "mismatch":
             print(f"  - {n}：!! 和登记的不一致：{r['mismatch']}")
@@ -704,6 +775,9 @@ def cmd_check(a: argparse.Namespace) -> int:
         if any(strategies[n].get("pending_decisions") for n in names):
             print("   登记表里标成\"待定\"的决定（例如 min_pf）要在正式运行之前定下来：改好 configs/preregistration.json、"
                   "删掉 min_pf_pending_decision，提交 git 以后再运行（见 docs/round5-preregistration.md「登记表」一节）。")
+        if any(strategies[n].get("pinned_tools_pending") for n in names):
+            print("   一起固定的工具脚本（登记表 pinned_tools）还没有 sha256：整合的人在工具脚本定稿后运行 "
+                  "python3 scripts/check_prereg.py write（\"PENDING\" 直接填上，不用 --force），连同脚本一起提交 git 再跑。")
         if any(strategies[n].get("run_mismatch") for n in names):
             print("   交易所、研究配置、运行设置要和登记表一样（configs/preregistration.json 的 config / stages / run_settings）："
                   "按 README「第 5 步」里的命令运行，不要另外改 RESEARCH_* 环境变量。")
@@ -800,25 +874,40 @@ def cmd_write(a: argparse.Namespace) -> int:
         old = str(ent.get("sha256") or "").lower()
         pins_new = pinned_now(n, f)
         pins_old = ent.get("pinned_files") if isinstance(ent.get("pinned_files"), dict) else {}
-        if old == new and pins_old == pins_new:
-            print(f"  - {n}：sha256 没变（{_short(new)}…；一起固定的 {len(pins_new)} 个文件也没变）")
+        # 一起固定的工具脚本（pinned_tools）：登记表自己列出路径，这里只按现在的文件重新计算 sha256
+        tools_old = ent.get("pinned_tools") if isinstance(ent.get("pinned_tools"), dict) else {}
+        tools_new, tools_missing = tools_now(ent)
+        if tools_missing:
+            errors.append(f"{n}：一起固定的工具脚本找不到：{'、'.join(tools_missing)}")
+            continue
+        tools_old_n = {str(k): str(v or "").strip().lower() for k, v in tools_old.items()}
+        if old == new and pins_old == pins_new and tools_old_n == tools_new:
+            print(f"  - {n}：sha256 没变（{_short(new)}…；一起固定的 {len(pins_new)} 个文件"
+                  + (f"、{len(tools_new)} 个工具脚本" if tools_new else "") + "也没变）")
             continue
         if done:
             refused.append(f"{n}：已经正式运行过（{'、'.join(str(r.get('run_id') or r.get('run_dir')) for r in done)}），"
                            "登记不能再改（--force 也不行）；改动要换新类名")
             continue
-        if SHA_RE.match(old) and not a.force:
-            if old != new:
+        # 已经固定过（64 位十六进制）又变了的工具脚本；还没固定的（例如 "PENDING"）直接填上，不用 --force
+        tools_changed = sorted(k for k, v in tools_new.items() if SHA_RE.match(tools_old_n.get(k, "")) and tools_old_n[k] != v)
+        if not a.force and ((SHA_RE.match(old) and (old != new or pins_old != pins_new)) or tools_changed):
+            if SHA_RE.match(old) and old != new:
                 refused.append(f"{n}：登记的是 {_short(old)}…，现在的文件是 {_short(new)}…")
-            else:
+            elif SHA_RE.match(old) and pins_old != pins_new:
                 diff = sorted(k for k in set(pins_old) | set(pins_new) if pins_old.get(k) != pins_new.get(k))
                 refused.append(f"{n}：一起固定的文件改过：{'、'.join(diff)}")
+            else:
+                refused.append(f"{n}：一起固定的工具脚本改过：{'、'.join(tools_changed)}")
             continue
         ent["sha256"] = new
         ent["pinned_files"] = pins_new
+        if tools_old:
+            ent["pinned_tools"] = tools_new
         changed.append(n)
         print(f"  - {n}：sha256 {'改成' if SHA_RE.match(old) and old != new else ('写入' if not SHA_RE.match(old) else '没变')} {new}（{ent['file']}）；"
-              f"一起固定：{'、'.join(pins_new) or '（没有）'}")
+              f"一起固定：{'、'.join(pins_new) or '（没有）'}"
+              + (f"；工具脚本：{'、'.join(f'{k} {_short(v)}…' for k, v in tools_new.items())}" if tools_new else ""))
     if errors:
         for e in errors:
             print(f"错误：{e}", file=sys.stderr)
@@ -862,6 +951,15 @@ def cmd_show(a: argparse.Namespace) -> int:
             bad += 1
         else:
             state = "一致" + (f"（连同 {len(ent['pinned_files'])} 个一起固定的文件）" if ent.get("pinned_files") else "")
+        tool_err, tool_pending = check_pinned_tools(ent)
+        if tool_err:
+            state += f"；!! {tool_err}"
+            bad += 1
+        elif tool_pending:
+            state += f"；!! 工具脚本还没固定 sha256：{'、'.join(tool_pending)}（正式运行之前整合的人运行 write）"
+            bad += 1
+        elif isinstance(ent.get("pinned_tools"), dict) and ent["pinned_tools"]:
+            state += f"；工具脚本 {len(ent['pinned_tools'])} 个一致"
         pend = pending_decisions(ent)
         if pend:
             state += f"；!! 待定：{'；'.join(pend)}（正式运行之前要定下来）"

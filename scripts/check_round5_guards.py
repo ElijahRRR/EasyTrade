@@ -6,7 +6,11 @@
   2. 回测里数据中途结束的币（下架币）：NewListingShortHedged.nlsh_data_ended、CapitulationRebound.cr_data_ended
      只在最后一根K线收盘以后才算"结束"，中间缺几根K线不算，实盘永远不算；
   3. scripts/check_prereg.py 的正式运行规则：在临时目录里复制一份仓库、git init 提交，然后检查
-     读不到 git / 交易所不对 / 多出没登记的 research-override / 研究配置没提交 / 运行设置不对 / 同一个类再跑 / write --force。
+     读不到 git / 交易所不对 / 多出没登记的 research-override / 研究配置没提交 / 运行设置不对 / 同一个类再跑 / write --force；
+     2026-11-08 起还有：运行设置 funding_archive（XSFundingCarry = okx，其他 = 0）、一起固定的工具脚本 pinned_tools
+     （"PENDING" = 还没固定：正式运行拒绝、合成数据只提醒；write 直接填上；改过 = 拒绝；没提交 = 不是正式运行）；
+     复查后加的：运行设置 datadir（XSFundingCarry 登记了 user_data/data/okx-funding，换目录 = 拒绝）、第 1 阶段（以后加币安的第 2 阶段，
+     OKX 再跑照样是重复运行）。
 
 用法：
   .venv/bin/python scripts/check_round5_guards.py
@@ -146,6 +150,15 @@ def _copy_repo(dst: Path) -> None:
         if (ROOT_DIR / f).is_file():
             (dst / f).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT_DIR / f, dst / f)
+    # 登记表 pinned_tools 列的工具脚本（例如 scripts/okx_funding_archive.py）：有就复制，还没有就放一个占位文件（只给这个自检用）
+    reg = json.loads((ROOT_DIR / cp.DEFAULT_REGISTRY).read_text(encoding="utf-8"))
+    for ent in (reg.get("strategies") or {}).values():
+        for f in (ent.get("pinned_tools") or {}) if isinstance(ent, dict) else ():
+            (dst / f).parent.mkdir(parents=True, exist_ok=True)
+            if (ROOT_DIR / f).is_file():
+                shutil.copy2(ROOT_DIR / f, dst / f)
+            elif not (dst / f).is_file():
+                (dst / f).write_text("# placeholder for check_round5_guards.py\n", encoding="utf-8")
 
 
 def test_prereg_rules(tmp: Path) -> None:
@@ -241,6 +254,154 @@ def test_prereg_rules(tmp: Path) -> None:
     rc, r = run("nogit", cwd=bare)
     reasons = "；".join(r.get("not_formal_reasons") or [])
     check("读不到 git（没有 .git）→ 不是正式运行", (rc, r.get("formal_run"), "git" in reasons), (0, False, True))
+
+    test_prereg_funding_archive(tmp, repo, prereg, run, ok_settings)
+
+
+def test_prereg_funding_archive(tmp: Path, repo: Path, prereg: Any, run: Any, ok_settings: str) -> None:
+    """2026-11-08：XSFundingCarry 改在 OKX 上测（OKX 资金费历史归档）。运行设置 funding_archive 和一起固定的工具脚本 pinned_tools。"""
+    print("4. check_prereg.py：funding_archive 运行设置、pinned_tools（工具脚本）")
+    reg_path = repo / "configs" / "preregistration.json"
+    reg = json.loads(reg_path.read_text(encoding="utf-8"))
+    X, XCFG = "XSFundingCarry", "configs/config.okx-research-funding.json"
+    xent = reg["strategies"][X]
+    tools = xent.get("pinned_tools") or {}
+    check("登记表：XSFundingCarry 在 OKX、用 config.okx-research-funding.json、funding_archive = okx、没有 2020 留出段",
+          (xent.get("venue"), xent.get("config"), (xent.get("run_settings") or {}).get("funding_archive"),
+           (xent.get("run_settings") or {}).get("pre_holdout"), (xent.get("run_settings") or {}).get("start")),
+          ("okx", XCFG, "okx", "", "20220401"))
+    check("登记表：全局 funding_archive = 0（其他策略开着归档 = 不一样）", (reg.get("run_settings") or {}).get("funding_archive"), "0")
+    check("登记表：XSFundingCarry 的 pinned_tools 里有 scripts/okx_funding_archive.py", "scripts/okx_funding_archive.py" in tools, True)
+    if not tools:
+        return
+    tool = repo / next(iter(tools))
+    x_want = cp.required_settings(reg, xent, {})
+    x_ok = json.dumps({k: str(v) for k, v in x_want.items()})
+
+    def xrun(name: str, *extra: str, settings: str = x_ok) -> tuple[int, dict]:
+        d = tmp / "runs" / name
+        rc, out = prereg("check", "--strategies", X, "--config", XCFG, "--run-dir", str(d), "--settings", settings, *extra)
+        p = d / "prereg.json"
+        return rc, (json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {"_out": out})
+
+    # 副本里 write --force 已经把工具脚本的 sha256 填上了
+    check("副本里 write 以后 pinned_tools 是 64 位十六进制", all(cp.SHA_RE.match(str(v)) for v in (xent.get("pinned_tools") or {}).values()), True)
+    rc, r = xrun("x_ok")
+    check("XSFundingCarry：都提交了、funding_archive = okx → 正式运行", (rc, r.get("formal_run")), (0, True))
+    bad = json.loads(x_ok)
+    bad["funding_archive"] = "0"
+    rc, r = xrun("x_fa0", settings=json.dumps(bad))
+    check("XSFundingCarry：funding_archive = 0（没用归档）→ 拒绝", (rc, r.get("formal_run")), (3, False))
+    bad.pop("funding_archive")
+    rc, r = xrun("x_fa_missing", settings=json.dumps(bad))
+    check("XSFundingCarry：没传 funding_archive（旧版研究脚本）→ 拒绝", (rc, r.get("formal_run")), (3, False))
+    bad = json.loads(x_ok)
+    bad["start"] = "20210101"
+    rc, r = xrun("x_start", settings=json.dumps(bad))
+    check("XSFundingCarry：start = 20210101（不是登记的 20220401）→ 拒绝", (rc, r.get("formal_run")), (3, False))
+    d = tmp / "runs" / "x_bn"
+    rc, _out = prereg("check", "--strategies", X, "--config", "configs/config.binance-research.json", "--run-dir", str(d),
+                      "--settings", x_ok)
+    check("XSFundingCarry：用币安配置（原来的运行 C）→ 拒绝", rc, 3)
+    p_bad = json.loads(ok_settings)
+    p_bad["funding_archive"] = "okx"
+    rc, r = run("p_fa_okx", settings=json.dumps(p_bad))
+    check("PremiumFade：funding_archive = okx（和 XSFundingCarry 一起开着归档跑）→ 拒绝", (rc, r.get("formal_run")), (3, False))
+
+    # 工具脚本还没固定（"PENDING"）
+    orig_reg = reg_path.read_text(encoding="utf-8")
+    pend = json.loads(orig_reg)
+    pend["strategies"][X]["pinned_tools"] = {k: "PENDING" for k in tools}
+    reg_path.write_text(json.dumps(pend, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "tools pending")
+    rc, r = xrun("x_pending")
+    check("pinned_tools = PENDING → 正式运行拒绝", (rc, r.get("formal_run")), (3, False))
+    rc, r = xrun("x_pending_syn", "--synthetic")
+    check("pinned_tools = PENDING、合成数据 → 只提醒（退出码 0，不是正式运行）",
+          (rc, r.get("formal_run"), any("工具脚本" in w for w in r.get("warnings") or [])), (0, False, True))
+    rc, r = xrun("x_pending_dc", "--pipeline-only")
+    check("pinned_tools = PENDING、只做数据检查 → 只提醒", (rc, r.get("formal_run")), (0, False))
+    rc, out = prereg("write", "--strategies", X)
+    now = json.loads(reg_path.read_text(encoding="utf-8"))["strategies"][X].get("pinned_tools") or {}
+    check("write（不加 --force）把 PENDING 填成现在的 sha256",
+          (rc, {k: cp.SHA_RE.match(str(v)) is not None for k, v in now.items()}), (0, {k: True for k in tools}))
+    check("填上的 sha256 = 工具脚本现在的 sha256", now.get(next(iter(tools))), cp.sha256_file(tool))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "tools pinned")
+    rc, r = xrun("x_pinned")
+    check("填好以后 → 正式运行", (rc, r.get("formal_run")), (0, True))
+
+    # 工具脚本改过
+    tool_src = tool.read_bytes()
+    tool.write_bytes(tool_src + b"\n# changed\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "tool changed")
+    rc, r = xrun("x_tool_changed")
+    check("工具脚本改过（已经提交也一样）→ 拒绝", (rc, r.get("formal_run")), (3, False))
+    rc, r = xrun("x_tool_changed_syn", "--synthetic")
+    check("工具脚本改过、合成数据 → 照样拒绝（和 pinned_files 一样）", rc, 3)
+    reg_before = reg_path.read_bytes()
+    rc, out = prereg("write", "--strategies", X)
+    check("工具脚本改过、write 不加 --force → 拒绝、登记表不变", (rc, reg_path.read_bytes() == reg_before), (3, True))
+    rc, out = prereg("write", "--strategies", X, "--force")
+    check("工具脚本改过、write --force → 重新固定", (rc, (json.loads(reg_path.read_text(encoding="utf-8"))["strategies"][X]
+                                                    .get("pinned_tools") or {}).get(next(iter(tools)))), (0, cp.sha256_file(tool)))
+    # 只提交登记表、工具脚本的改动不提交：sha256 一致，但不是正式运行
+    tool.write_bytes(tool_src)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "tool restored")
+    tool.write_bytes(tool_src + b"\n# uncommitted\n")
+    rc, out = prereg("write", "--strategies", X, "--force")
+    _git(repo, "add", "configs/preregistration.json")
+    _git(repo, "commit", "-q", "-m", "registry only")
+    rc, r = xrun("x_tool_dirty")
+    reasons = "；".join(r.get("not_formal_reasons") or [])
+    check("工具脚本有未提交的改动（登记表已经按它更新、提交）→ 不是正式运行（不拒绝）",
+          (rc, r.get("formal_run"), "工具脚本" in reasons), (0, False, True))
+    tool.write_bytes(tool_src)
+    reg_path.write_text(orig_reg, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "restore")
+    rc, out = prereg("show")
+    check("show 能读新的登记表（venue_decision、deferred、pinned_tools 这些新字段不报错）", "XSFundingCarry" in out, True)
+
+    # 2026-11-08 复查后加：数据目录（run_settings.datadir）和第 1 阶段（stage = "1"）
+    check("登记表：XSFundingCarry 登记了数据目录 user_data/data/okx-funding、第 1 阶段",
+          ((xent.get("run_settings") or {}).get("datadir"), xent.get("stage")), ("user_data/data/okx-funding", "1"))
+    bad = json.loads(x_ok)
+    bad["datadir"] = "user_data/data/okx-funding-try"
+    rc, r = xrun("x_dd_other", settings=json.dumps(bad))
+    check("XSFundingCarry：--datadir / RESEARCH_DATADIR 换成别的目录 → 拒绝", (rc, r.get("formal_run")), (3, False))
+    rc, r = xrun("x_dd_other_dc", "--pipeline-only", settings=json.dumps(bad))
+    check("同上、只做数据检查 → 只提醒", (rc, r.get("formal_run")), (0, False))
+    bad.pop("datadir")
+    rc, r = xrun("x_dd_missing", settings=json.dumps(bad))
+    check("XSFundingCarry：没传 datadir（旧版研究脚本）→ 拒绝", rc, 3)
+    p_dd = json.loads(ok_settings)
+    p_dd["datadir"] = "user_data/data/okx"
+    rc, r = run("p_dd", settings=json.dumps(p_dd))
+    check("PremiumFade：没有登记 datadir，传了也不对照（不拒绝）", rc, 0)
+    rc, r = xrun("x_first", "--record-formal")
+    rows = [json.loads(x) for x in (repo / "user_data" / "research" / "formal_runs.jsonl").read_text(encoding="utf-8").splitlines()]
+    check("XSFundingCarry 正式运行记进记录，stage = \"1\"", (rc, r.get("formal_run"), [x.get("stage") for x in rows if x["class"] == X]),
+          (0, True, ["1"]))
+    # 以后加币安复核：stages {"1": OKX, "2": 币安}（6.5 节）。OKX 再跑一次照样是重复运行
+    st = json.loads(reg_path.read_text(encoding="utf-8"))
+    ent = st["strategies"][X]
+    ent.pop("stage", None)
+    ent["stages"] = {"1": {"venue": "okx", "config": XCFG}, "2": {"venue": "binance", "config": "configs/config.binance-research.json"}}
+    ent["venues"] = ["okx", "binance"]
+    reg_path.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add binance stage")
+    rc, r = xrun("x_again")
+    check("加了币安的第 2 阶段以后，OKX 再跑一次 → 第 1 阶段、重复运行，不是正式运行",
+          (rc, r.get("formal_run"), (r.get("strategies") or {}).get(X, {}).get("stage"),
+           bool((r.get("strategies") or {}).get(X, {}).get("formal_repeat"))), (0, False, "1", True))
+    reg_path.write_text(orig_reg, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "restore 2")
 
 
 def main() -> int:
