@@ -691,7 +691,7 @@ CapitulationRebound、NewListingShortHedged 的 `stages."2"` 加了 `deferred`�
 1. **单独的数据目录** `user_data/data/okx-funding`，只给 XSFundingCarry 用。归档导入的老资金费、替身标记价格**绝不写进** `user_data/data/okx`
    （运行 A / B 和 NFI 回测用的；写进去会悄悄改掉它们的结果）。数据目录是 `user_data/data/okx` 时脚本和研究脚本都拒绝运行。
    合约K线先从 `user_data/data/okx` 复制过来（只复制K线，复制不是链接），省得重下；`make okx-funding-data` 和研究脚本第 1 步（不是合成数据时）都会先复制。
-2. **列文件、下载：** 官方接口 `market-data-history`（`module=3`、`instType=SWAP`、`dateAggrType=monthly`，每次最多 5 个币（OKX 文档写 10 个，2026-11-08 在 VPS 上实测超过 5 个返回 code=50025；以后再遇到这个错误，脚本自动把这一批减半重试）、19 个月（接口上限 20 个月，留一个月余量）；
+2. **列文件、下载：** 官方接口 `market-data-history`（`module=3`、`instType=SWAP`、`dateAggrType=monthly`，每次最多 5 个币（OKX 文档写 10 个，2026-11-08 在 VPS 上实测超过 5 个返回 code=50025；以后再遇到这个错误，脚本自动把这一批减半重试）、6 个月（OKX 文档写 20 个月，2026-11-08 实测 19 个月返回 HTTP 400 code=50077；再遇到 50077 自动把月数减半重试；限速 code=50011 等一会儿再试）；
    OKX 的归档按北京时间（UTC+8）分月，请求的起止也按 UTC+8 的月份写；两次请求之间至少隔 0.5 秒，联网出错自动重试）。
    下载的文件缓存在 `<数据目录>/okx_funding_archive/raw/<YYYYMM>/`，再跑只下新的。联网出错（退出码 2）时数据文件不动，重新运行接着下。
 3. **费率用"实际结算的费率"**（CSV 里 `real_funding_rate` 一类的列）：freqtrade 自己从 OKX 接口下的资金费（ccxt 把 `realizedRate` 当成 `fundingRate`）就是实际结算的费率。
