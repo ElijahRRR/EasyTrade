@@ -51,7 +51,8 @@ OKX 资金费率历史归档导入（第 5 轮 XSFundingCarry 在 OKX 上跑用�
       --seed-from DIR：导入前先把 DIR/futures 里本数据目录还没有的合约K线文件（*-futures.feather，只有这一种）复制过来，
                        省得重新下载（复制，不用符号链接；已有的文件不碰）。
       --lister official（默认）：GET https://www.okx.com/api/v5/public/market-data-history（module=3 资金费、instType=SWAP、
-                       instFamilyList 每次最多 10 个、dateAggrType=monthly、每次 19 个月（接口上限 20，留一个月余量），
+                       instFamilyList 每次最多 5 个（OKX 文档写 10 个，2026-11-08 VPS 实测超过 5 个返回 code=50025；
+                       再遇到这个错误自动把这一批减半重试）、dateAggrType=monthly、每次 19 个月（接口上限 20，留一个月余量），
                        begin / end 按北京时间（UTC+8）的月份写，和 OKX 归档分月的方式一样）。
       --lister priapi：社区脚本用过的旧列表接口 https://www.okx.com/priapi/v5/broker/public/orderRecord?path=cdn/okex/traderecords/swaprate/monthly/YYYYMM
                        （有人说它已经 404，只在官方接口不行时试）。
@@ -134,7 +135,11 @@ PRIAPI_PATH = "cdn/okex/traderecords/swaprate/monthly/{month}"
 PRIAPI_FILE_BASE = "https://static.okx.com/cdn/okex/traderecords/swaprate/monthly/{month}/"
 LISTERS = ("official", "priapi")
 MODULE_FUNDING = "3"
-MAX_FAMILIES = 10  # 官方接口：instFamilyList 最多 10 个
+# 官方接口：instFamilyList 文档写最多 10 个，可是 2026-11-08 在 VPS 上实测 10 个返回
+# code=50025 "Number of instFamilyList values exceeds the maximum limit"，所以每次只放 5 个；
+# 以后 OKX 再收紧，遇到 50025 自动减半重试（list_remote）
+MAX_FAMILIES = 5
+FAMILY_LIMIT_CODES = ("50025",)
 # 官方接口：dateAggrType=monthly 时最多 20 个月。每次只要 19 个月，留一个月余量
 # （OKX 的归档按北京时间 UTC+8 分月，请求的起止也按 UTC+8 的月份写，见 _month_bounds_ms_cn）
 MAX_MONTHS = 19
@@ -206,6 +211,14 @@ class FormatError(Exception):
     def __init__(self, msg: str, seen: str | bytes | None = None) -> None:
         super().__init__(msg)
         self.seen = seen
+
+
+class ApiError(FormatError):
+    """OKX 返回了 code != 0（例如 50025 = instFamilyList 太多）。仍然算"格式 / 请求不对" -> 退出码 3"""
+
+    def __init__(self, msg: str, code: str, api_msg: str, seen: str | bytes | None = None) -> None:
+        super().__init__(msg, seen=seen)
+        self.code, self.api_msg = code, api_msg
 
 
 class HttpStatus(Exception):
@@ -473,7 +486,8 @@ def _check_api_code(doc: Any, raw: bytes) -> None:
     if isinstance(doc, dict) and "code" in doc:
         code = str(doc.get("code"))
         if code not in ("0", "", "None", "200"):
-            raise FormatError(f"OKX 返回错误：code={code} msg={doc.get('msg')!r}", seen=raw)
+            api_msg = str(doc.get("msg") or "")
+            raise ApiError(f"OKX 返回错误：code={code} msg={api_msg!r}", code=code, api_msg=api_msg, seen=raw)
 
 
 def walk_json(doc: Any) -> Iterable[tuple[str, dict[str, Any] | None]]:
@@ -536,41 +550,74 @@ def parse_priapi_listing(raw: bytes, month: str) -> list[FileEntry]:
     return list(out.values())
 
 
-def official_requests(families: list[str], months: list[str], now_ms: int) -> list[dict[str, str]]:
+def _official_params(fam: list[str], mon: list[str], now_ms: int) -> dict[str, str] | None:
+    begin = _month_bounds_ms_cn(mon[0])[0]
+    end = min(_month_bounds_ms_cn(mon[-1])[1], now_ms)
+    if end < begin:
+        return None
+    return {
+        "module": MODULE_FUNDING,
+        "instType": "SWAP",
+        "instFamilyList": ",".join(fam),
+        "dateAggrType": "monthly",
+        "begin": str(begin),
+        "end": str(end),
+    }
+
+
+def _official_batches(families: list[str], months: list[str], max_families: int) -> list[tuple[list[str], list[str]]]:
+    return [(fam, mon) for fam in _chunks(sorted(families), max_families) for mon in _chunks(months, MAX_MONTHS)]
+
+
+def official_requests(families: list[str], months: list[str], now_ms: int,
+                      max_families: int = MAX_FAMILIES) -> list[dict[str, str]]:
     reqs = []
-    for fam in _chunks(sorted(families), MAX_FAMILIES):
-        for mon in _chunks(months, MAX_MONTHS):
-            begin = _month_bounds_ms_cn(mon[0])[0]
-            end = min(_month_bounds_ms_cn(mon[-1])[1], now_ms)
-            if end < begin:
-                continue
-            reqs.append({
-                "module": MODULE_FUNDING,
-                "instType": "SWAP",
-                "instFamilyList": ",".join(fam),
-                "dateAggrType": "monthly",
-                "begin": str(begin),
-                "end": str(end),
-            })
+    for fam, mon in _official_batches(families, months, max_families):
+        params = _official_params(fam, mon, now_ms)
+        if params is not None:
+            reqs.append(params)
     return reqs
+
+
+def _is_family_limit(e: "ApiError") -> bool:
+    return e.code in FAMILY_LIMIT_CODES or "instfamilylist" in e.api_msg.lower()
 
 
 def list_remote(http: Http, lister: str, families: list[str], months: list[str], now_ms: int) -> list[FileEntry]:
     entries: dict[str, FileEntry] = {}
     if lister == "official":
-        reqs = official_requests(families, months, now_ms)
-        print(f"列出归档文件：官方接口，{len(reqs)} 次请求（每次最多 {MAX_FAMILIES} 个币、{MAX_MONTHS} 个月）")
-        for i, params in enumerate(reqs, 1):
+        cap = MAX_FAMILIES
+        queue = _official_batches(families, months, cap)
+        print(f"列出归档文件：官方接口，约 {len(queue)} 次请求（每次最多 {cap} 个币、{MAX_MONTHS} 个月）")
+        i = 0
+        while queue:
+            fam, mon = queue.pop(0)
+            params = _official_params(fam, mon, now_ms)
+            if params is None:
+                continue
+            i += 1
             try:
                 raw = http.get(OFFICIAL_URL, params)
             except HttpStatus as e:
                 raise FormatError(f"列表接口返回 HTTP {e.status}：{e.url}", seen=e.body) from None
-            got = parse_official_listing(raw)
+            try:
+                got = parse_official_listing(raw)
+            except ApiError as e:
+                if not (_is_family_limit(e) and len(fam) > 1):
+                    raise
+                # OKX 嫌一次的币太多（code=50025）：这一批和后面还没发的都按一半重新分批
+                cap = max(1, len(fam) // 2)
+                print(f"  · 第 {i} 次：OKX 说 instFamilyList 太多（code={e.code}，这一批 {len(fam)} 个币），"
+                      f"改成每次最多 {cap} 个币重试")
+                rest = [(fam, mon)] + queue
+                queue = [(f2, m2) for f1, m2 in rest for f2 in _chunks(f1, cap)]
+                continue
             if not got:
-                print(f"  · 第 {i}/{len(reqs)} 次：没有文件（{params['instFamilyList'][:60]}…，"
+                print(f"  · 第 {i} 次：没有文件（{params['instFamilyList'][:60]}…，"
                       f"{_iso(int(params['begin']))[:7]} ~ {_iso(int(params['end']))[:7]}）")
             for e in got:
                 entries.setdefault(e.url, e)
+        print(f"  列表请求共 {i} 次（最后每次最多 {cap} 个币）")
     else:
         print(f"列出归档文件：旧的 priapi 接口，{len(months)} 次请求（每个月一次）")
         for mon in months:
