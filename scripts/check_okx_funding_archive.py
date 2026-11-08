@@ -5,7 +5,7 @@ scripts/okx_funding_archive.py（OKX 资金费历史归档导入）的离线自�
   1. CSV 列名的各种写法（不分大小写、驼峰、BOM）、"实际结算的费率"优先、只有 funding_rate 时的警告、认不出的表头 -> 退出码 3
   2. 时间格式：秒 / 毫秒 / 微秒整数、ISO 字符串（带时区 / 不带时区）；结算时间取整到分钟，和 freqtrade 从接口下载时完全一样
   3. 只留配置里的币的 USDT 永续（BTC-USDT-SWAP），币本位、交割合约、别的币都不要；没有合约列时按文件名认
-  4. 列表接口的返回（OKX 没有公开写清楚格式）：几种可能的样子、错误码、旧的 priapi 列表；请求按 10 个币 / 20 个月分批
+  4. 列表接口的返回（OKX 没有公开写清楚格式）：几种可能的样子、错误码、旧的 priapi 列表；请求按 5 个币 / 19 个月分批；OKX 返回 code=50025（币太多）时自动减半重试
   5. 联网模式（假的 HTTP 层，不联网）：缓存、重下时不再下载、两次请求至少隔 0.5 秒、重试、网络出错 -> 退出码 2 而且数据不动
   6. 合并：本地已有的行优先；重叠的行对不上（> 1%）-> overlap_mismatch
   7. 标记价格替身：只补第一根真实标记价格之前的时间点，从不覆盖真实的；再跑一次不会多补；--no-mark-substitute
@@ -303,7 +303,7 @@ def test_listing() -> None:
     reqs = ofa.official_requests(fams, months, ms("2026-11-08"))
     nf = [len(r["instFamilyList"].split(",")) for r in reqs]
     spans = [(int(r["end"]) - int(r["begin"])) for r in reqs]
-    check("60 个币 × 57 个月 -> 18 次请求，每次最多 10 个币", (len(reqs), max(nf), len(months)), (18, 10, 57))
+    check("60 个币 × 57 个月 -> 36 次请求，每次最多 5 个币（OKX 实测上限，文档写 10）", (len(reqs), max(nf), len(months)), (36, 5, 57))
     cn = timedelta(hours=8)  # OKX 归档按北京时间分月：请求的起止也按北京时间的月份写
     check("每次 19 个月（接口上限 20，留一个月余量；按北京时间的月份数算）",
           max(len(ofa._months(datetime.fromtimestamp(int(r["begin"]) / 1000, UTC) + cn,
@@ -477,6 +477,51 @@ def test_network() -> None:
 # ----------------------------------------------------------------------------
 # 6. 合并：已有的行优先 + 重叠对不上
 # ----------------------------------------------------------------------------
+def test_family_limit() -> None:
+    print("5b. OKX 嫌一次的币太多（code=50025）：自动减半重试，后面的批次也按新的上限分；只剩 1 个币还报错 -> 退出码 3")
+    root = TMP / "famlimit"
+    dd, cfg, files, btc, eth = _net_fixture(root)
+    store(dd, "BTC/USDT:USDT", btc.iloc[-20:].reset_index(drop=True), FR)
+    store(dd, "ETH/USDT:USDT", eth.iloc[-20:].reset_index(drop=True), FR)
+    seen: list[int] = []
+    err = json.dumps({"code": "50025", "msg": "Number of instFamilyList values exceeds the maximum limit 1", "data": []}).encode()
+
+    def limit1(url: str) -> tuple[int, bytes] | None:
+        if url.startswith(ofa.OFFICIAL_URL):
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+            n = len(q["instFamilyList"].split(","))
+            seen.append(n)
+            if n > 1:
+                return 200, err
+        return None
+
+    http = FakeHttp(_listing_route(files, limit1))
+    rc, out = run(["update", NA, "--config", str(cfg), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], http)
+    check("退出码 0（2 个币一批被拒，减成 1 个币一批）", rc, 0)
+    check("列表请求：先 2 个币一次（被拒），再 1 个币各一次", seen, [2, 1, 1])
+    check_true("屏幕上说明了为什么重试", "code=50025" in out and "每次最多 1 个币" in out, out[-600:])
+    got = load(dd, "ETH/USDT:USDT", FR)
+    check("ETH 资金费 = 归档里的全部", (len(got), np.array_equal(got["funding_rate"].to_numpy(), eth["funding_rate"].to_numpy())),
+          (len(eth), True))
+
+    # 只剩 1 个币还报 50025：不再重试，退出码 3，数据不动
+    root2 = TMP / "famlimit_one"
+    dd2, cfg2, files2, btc2, eth2 = _net_fixture(root2)
+    store(dd2, "BTC/USDT:USDT", btc2.iloc[-20:].reset_index(drop=True), FR)
+    store(dd2, "ETH/USDT:USDT", eth2.iloc[-20:].reset_index(drop=True), FR)
+    before = sha_tree(dd2)
+    http2 = FakeHttp(_listing_route(files2, lambda u: (200, err) if u.startswith(ofa.OFFICIAL_URL) else None))
+    rc, out = run(["update", NA, "--config", str(cfg2), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], http2)
+    check("1 个币也被拒 -> 退出码 3", rc, 3)
+    check("数据目录一个字节都不变", sha_tree(dd2), before)
+
+    # 别的错误码不重试
+    other = json.dumps({"code": "50011", "msg": "Too Many Requests", "data": []}).encode()
+    h3 = FakeHttp(_listing_route(files2, lambda u: (200, other) if u.startswith(ofa.OFFICIAL_URL) else None))
+    rc, _ = run(["update", NA, "--config", str(cfg2), "--start", "20230101", "--end", "20230228", "--no-mark-substitute"], h3)
+    check("别的错误码（50011）不减半重试：1 次请求、退出码 3", (rc, h3.requests), (3, 1))
+
+
 def test_merge() -> None:
     print("6. 合并：本地已有的行（接口下载的）优先，归档只补没有的；重叠的行对不上超过 1% -> overlap_mismatch")
     for case, bump, want_mm in (("一样", 0.0, False), ("对不上", 1e-6, True)):
@@ -1301,6 +1346,7 @@ def main() -> int:
             test_parse_filter()
             test_listing()
             test_network()
+            test_family_limit()
             test_merge()
             test_mark()
             test_idempotent()

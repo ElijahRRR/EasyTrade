@@ -65,7 +65,7 @@
         "configs/research-overrides/XSFundingCarry.json": "4dfa6f2da45bcdf51704693762dd32ffa32be5f25cf04bd8cc3529f9731e93b2"
       },
       "pinned_tools": {
-        "scripts/okx_funding_archive.py": "05bd5388e06333bf86b05fd27112a94d98ac2f37c0b71020c38ef84b21eb0797"
+        "scripts/okx_funding_archive.py": "746141113c627b8c8f95c378e72c142ede64c499be7be05057fa55005d4b5a2e"
       },
       "run_settings": {
         "start": "20220401",
