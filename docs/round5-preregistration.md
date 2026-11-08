@@ -696,6 +696,10 @@ CapitulationRebound、NewListingShortHedged 的 `stages."2"` 加了 `deferred`�
    下载的文件缓存在 `<数据目录>/okx_funding_archive/raw/<YYYYMM>/`，再跑只下新的。联网出错（退出码 2）时数据文件不动，重新运行接着下。
 3. **费率用"实际结算的费率"**（CSV 里 `real_funding_rate` 一类的列）：freqtrade 自己从 OKX 接口下的资金费（ccxt 把 `realizedRate` 当成 `fundingRate`）就是实际结算的费率。
    没有这一列才退回 `funding_rate`，并大声警告、记进 manifest。时间用结算时间，取整方式和 freqtrade 一样。
+   **2026-11-08 实际情况（还没看任何回测结果）：** OKX 的真实归档（3099 个文件）只有 `funding_rate` 列，没有 `real_funding_rate`。
+   和接口下的实际结算费率重叠的 17985 条（60 个币、最近约 3 个月）一条都不差（最大差 0）。所以第 9 条的自动检查改成：
+   费率列不是实际结算的那一列时，只要重叠至少 1000 条、一条不差、每个有归档行的币都比过，就按实际结算的费率接受，并在 `check.json` 的 notes 里写明；
+   否则照旧拒绝。剩下的风险：2022-03 到最近 3 个月以前没法逐条比，假设两列一样（OKX 公布的历史资金费率就是结算时用的费率）。
 4. **合并：** freqtrade 从接口下的行优先，归档只补本地没有的时间点。重叠的那段逐条比较：超过 1% 的重叠行差别大于 1e-9 时 `overlap_mismatch = true`（归档的费率列可能不是实际结算的费率）。
    复查后加：真的比过才算数（`overlap_checked = true`、重叠条数大于 0；一条都没比上 = "没有核对"，也不能正式运行）；再导入时重叠按以前导入过的全部归档累计比。
    **还没有接口资金费的币默认拒绝导入**（退出码 1，什么都不改）：freqtrade 只往最后一行后面接着下，先导入归档再下载就永远不会重叠、没法核对。
@@ -715,7 +719,7 @@ CapitulationRebound、NewListingShortHedged 的 `stages."2"` 加了 `deferred`�
    认不出来就退出码 3、什么都不改、把看到的内容打印出来。第一次在 VPS 上先 `make okx-funding-probe` 看一眼；要改脚本就在正式运行之前改，改完重新 `prereg-write --force`、提交，
    再用默认区间重新运行一次 `make okx-funding-data`（见第 4 条）。
 9. **正式运行之前的自动检查**（复查后加；研究脚本第 1 步，结果在结果目录 `funding_archive/check.json`）：`overlap_checked = true` 而且 `overlap_mismatch = false`、
-   用的是实际结算的费率列、时间不是猜的、替身标记价格打开、`data_tool_sha256` 只有一个而且等于登记的 `pinned_tools`、
+   用的是实际结算的费率列（或者按第 3 条用重叠核对证明一样）、时间不是猜的、替身标记价格打开、`data_tool_sha256` 只有一个而且等于登记的 `pinned_tools`、
    资金费从研究开始（或 2022-03）以前一直覆盖到最近约 3 个月、研究要用的那段没有资金费缺口和超过 24 小时的标记价格缺口、没有来历不明的币。
    有一样不对：在第一次回测之前停止（退出码 4），**不记进正式运行记录，不算用掉**；修好数据再用同样的命令运行。只做数据检查和 `RESEARCH_ALLOW_UNREGISTERED=1` 的试跑只提醒。
 
