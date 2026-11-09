@@ -15,6 +15,8 @@
 > **2026-11-08 修订（在任何真实数据回测之前）：XSFundingCarry 改在美国 VPS 上用 OKX 数据测**（资金费用 OKX 官方历史归档，2022-03 起，研究从 2022-04-01 开始，没有 2020 留出段）；
 > 所有要用币安的部分（原来的运行 C、两个策略的第二阶段）推迟到整个项目准备上模拟盘 / 实盘时再做。
 > 第 1 ~ 4 节原文不改，凡是和这条修订冲突的地方以第 6.5 节为准。
+>
+> **2026-11-09 运行 C（XSFundingCarry，OKX）正式运行：未通过**：走步拼接的盈亏因子 1.07 < 1.1，其他每一条都过了。不补救、不重跑；结果和诊断见第 6.6 节和 [`docs/research-runs/2026-11-09-round5-runC/`](research-runs/2026-11-09-round5-runC/README.md)。
 
 ---
 
@@ -543,7 +545,7 @@
 10. **`--data-check-only`（`RESEARCH_DATA_CHECK_ONLY=1`）**：3.2 节"管道检查只看数据"要在正式运行之前单独做，原来只能在正式运行里顺带出现（看到收益之前没法先定"测不了 / 无效"）。
     现在研究脚本可以只下载、做数据检查、生成上线日文件和资金费覆盖的汇总，然后停下（一次回测都不跑，`plan.json` 记为 `data_check_only`、不是正式运行）。
 11. **正式运行记录**：正式运行在第一次回测之前记进本机的 `user_data/research/formal_runs.jsonl`（类名、阶段、交易所、结果目录、git 提交号、sha256、时间；不提交 git），
-    屏幕上提示把这几行复制进登记表的 `formal_runs` 再提交。之后同一个类、同一个阶段再跑（本机记录或登记表里有）= "重复运行"，不是正式运行；
+    提示把这几行复制进登记表的 `formal_runs` 再提交（2026-11-09 更正：这句提示只写进结果目录的 `research.log`，屏幕上看不到；直接看 `cat user_data/research/formal_runs.jsonl`）。之后同一个类、同一个阶段再跑（本机记录或登记表里有）= "重复运行"，不是正式运行；
     `check_prereg.py write --force` 也拒绝改已经正式运行过的类。
 12. **一周小窗口管道检查**加了 `--enable-protections`（和研究流程一样，PremiumFade 的冷却才起作用）；NewListingShortHedged 找不到上线日文件时报错退出（退出码 3），不再显示成"这一周没有信号"。
 
@@ -583,7 +585,7 @@
 | `drop_top_days` | `n`: 3，`segments`: ["unseen", "oos"] | 2.3 节（CapitulationRebound） | 去掉盈利最多的 3 个入场日后，没看过的一段或样本外不赚钱 = 未通过 |
 | `count_tags_exclude` | `tags`: ["hedge"] | 2.4 节（NewListingShortHedged） | 30 笔门槛、每币每年交易数不数对冲腿（PF、收益仍用全部交易） |
 
-最上层还有 `formal_runs`（正式运行的记录，从本机 `user_data/research/formal_runs.jsonl` 复制过来，见 6.2 节第 5 条）和 `changes`（6.4 节）。
+最上层还有 `formal_runs`（正式运行的记录，从本机 `user_data/research/formal_runs.jsonl` 复制过来，见 6.2 节第 5 条）、`changes`（6.4 节）和 `results`（2026-11-09 加：每次正式运行的结论和各段数字，规格 3.5 节第 1 条"失败结果原样记进登记表"；人看，`check_prereg.py` 和报告都不读，见 6.6 节）。
 
 第 2 节里"第二阶段不通过 = 失败"和"2020 留出段"不在 `extra_checks` 里：第二阶段是另一次运行（另一个结果目录），2020 留出段由研究脚本的 `RESEARCH_PRE_HOLDOUT` 跑、报告单独判。
 
@@ -597,7 +599,7 @@
 3. 把本文档、4 个策略文件、research-override、新配置、登记表一起提交 git，记下 commit。`make prereg-check` 应该显示 4 个"一致"。
 4. 正式运行时，研究脚本把每个策略文件的 sha256、一起固定的文件、研究配置的 sha256、运行设置、git 提交号写进结果目录 `plan.json` 的 `prereg`。
    5.7 节第 9 条里的文件有一个没有提交、或者有未提交的改动时，结果记为"不是正式的预注册运行"（`formal_run = false`）。
-5. 正式运行在第一次回测之前记进本机的 `user_data/research/formal_runs.jsonl`。跑完以后把屏幕上提示的那几行复制进登记表的 `formal_runs`、提交 git
+5. 正式运行在第一次回测之前记进本机的 `user_data/research/formal_runs.jsonl`。跑完以后把这几行（`cat user_data/research/formal_runs.jsonl`；提示只写在结果目录的 `research.log` 里，屏幕上看不到）复制进登记表的 `formal_runs`、提交 git
    （本机记录不提交 git，登记表里的才是以后换服务器、上模拟盘时都看得到的；2026-11-08 起三次运行都在美国 VPS 上）。之后同一个类、同一个阶段不能再算正式运行，`--force` 也会拒绝改这个类。
 
 ### 6.3 XSFundingCarry 的 min_pf（已定：1.1）
@@ -739,6 +741,21 @@ CapitulationRebound、NewListingShortHedged 的 `stages."2"` 加了 `deferred`�
    否则 `check_prereg.py` 会因为交易所 / 配置和登记的不一样拒绝。
 2. CapitulationRebound、NewListingShortHedged 第一阶段通过的，跑第二阶段（币安确认）。
 3. 第 7 节第 5 条里要在模拟盘核实的事。
+
+### 6.6 正式运行结果（运行之后记录，只增不改）
+
+**运行 C：XSFundingCarry（第 1 阶段，OKX），2026-11-09，运行目录 `run_20261109_013316`，commit `bc13af9`，登记表 sha256 `843e35f3b9c6…`：未通过。**
+
+- 唯一不通过的一条：走步 6 折拼接的盈亏因子 1.07 < 1.1（门槛 2026-11-08 在任何真实数据回测之前定的，6.3 节）。
+- 其他都过了：训练段 +38.31% / PF 1.26 / 回撤 6.79%，没看过的一段（2022-04 ~ 2023-12）+19.81% / PF 1.27 / 回撤 5.32%，
+  样本外 +9.92% / PF 1.13 / 回撤 7.95%，走步 +10.48% / 回撤 9.85%；每段都超过 30 笔；全期资金费 +91.80 USDT 是净收入；资金费为 0 的交易 0%。
+- 处理：按 3.1 节第 2 条和 6.4 节，不改参数、不放宽规则重跑；结论记进登记表 `results`，正式运行记录抄进 `formal_runs`。
+- 3.5 节第 2 条的诊断（只用来设计下一轮）：资金费只占利润约 19%，2024-01 ~ 2025-04 几乎为 0；2024 年以后资金费收入大约只够付手续费和滑点（估算）；
+  没看过的一段和样本外各有约 75% 的利润来自 3 个调仓周；走步第 1 ~ 3 折因为 600 根预热少了十来个 2023 年上线的币（5.1 节第 3 条，登记的规则），
+  这是走步和连续回测差距的主要原因。细节、推算方法和原始输出：[`docs/research-runs/2026-11-09-round5-runC/`](research-runs/2026-11-09-round5-runC/README.md)。
+- 对运行 A 的提醒（2026-11-09，在看到运行 A 任何结果之前写下）：CapitulationRebound 的样本外和走步各段同样按 600 根预热裁币（5.3 节第 10 条），能交易的币会比训练段少；
+  判定照登记的规则，不因为这一点改。
+- 第 5 轮的整体结论（3.5 节）要等运行 A、B 跑完再下。
 
 ---
 

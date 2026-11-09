@@ -211,5 +211,46 @@
     }
   },
   "changes": [],
-  "formal_runs": []
+  "formal_runs": [
+    {
+      "class": "XSFundingCarry",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261109_013316",
+      "run_dir": "user_data/research/run_20261109_013316",
+      "commit": "bc13af9c409676b95c3488019953b6f25635f9ff",
+      "sha256": "eeed49e28dd54258f63522d1b565e6402624243ae40239c82e6590666e63e85c",
+      "registry_sha256": "843e35f3b9c6889e618aa42626f3fcb5bc66c7261ac9960b0cd27dd4d72d457f",
+      "date_utc": "2026-11-09T01:33:35Z"
+    }
+  ],
+  "results": [
+    {
+      "class": "XSFundingCarry",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261109_013316",
+      "run_dir": "user_data/research/run_20261109_013316",
+      "commit": "bc13af9c409676b95c3488019953b6f25635f9ff",
+      "registry_sha256": "843e35f3b9c6889e618aa42626f3fcb5bc66c7261ac9960b0cd27dd4d72d457f",
+      "formal_run": true,
+      "verdict": "未通过",
+      "reasons": [
+        "走步盈亏因子 1.07 < 1.1"
+      ],
+      "segments": {
+        "train": "2022-04-01~2025-04-25 +38.31% PF 1.26 回撤 6.79% 1149 笔",
+        "unseen": "2022-04-01~2023-12-31 +19.81% PF 1.27 回撤 5.32% 647 笔",
+        "oos": "2025-04-26~2026-11-08 +9.92% PF 1.13 回撤 7.95% 846 笔",
+        "walk_forward": "6 折拼接 +10.48% PF 1.07 回撤 9.85% 1497 笔（每折 -5.43 / +1.87 / +0.36 / -3.97 / +4.84 / +13.48%）"
+      },
+      "extra_checks": {
+        "funding_net_positive": "通过：全期资金费 +91.80 USDT（训练段 +69.84、样本外 +21.96）",
+        "zero_funding_share_invalid": "通过：1995 笔里 0 笔资金费为 0"
+      },
+      "recorded": "2026-11-09",
+      "report": "docs/research-runs/2026-11-09-round5-runC/README.md",
+      "note": "按预注册 3.1 节第 2 条和 6.4 节：不补救，不改参数重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
+    }
+  ]
 }
