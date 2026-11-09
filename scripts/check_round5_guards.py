@@ -159,6 +159,13 @@ def _copy_repo(dst: Path) -> None:
                 shutil.copy2(ROOT_DIR / f, dst / f)
             elif not (dst / f).is_file():
                 (dst / f).write_text("# placeholder for check_round5_guards.py\n", encoding="utf-8")
+    # 真实登记表里的 formal_runs（已经正式跑过的类，例如 2026-11-09 的运行 C）不带进副本：下面的检查从"还没有正式运行"开始，
+    # 否则 write --force 会（按规则）拒绝改已经跑过的类。带着真实记录的情况在第 4 节最后单独查。
+    rp = dst / cp.DEFAULT_REGISTRY
+    rj = json.loads(rp.read_text(encoding="utf-8"))
+    if rj.get("formal_runs"):
+        rj["formal_runs"] = []
+        rp.write_text(json.dumps(rj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def test_prereg_rules(tmp: Path) -> None:
@@ -402,6 +409,28 @@ def test_prereg_funding_archive(tmp: Path, repo: Path, prereg: Any, run: Any, ok
     reg_path.write_text(orig_reg, encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "restore 2")
+
+    # 2026-11-09：真实登记表的 formal_runs（正式运行之后抄进来的记录）→ 记过的类再跑是重复运行，别的类照常是正式运行
+    real_runs = [r for r in json.loads((ROOT_DIR / cp.DEFAULT_REGISTRY).read_text(encoding="utf-8")).get("formal_runs") or []
+                 if isinstance(r, dict)]
+    if real_runs:
+        (repo / "user_data" / "research" / "formal_runs.jsonl").unlink(missing_ok=True)  # 前面自检记的本机记录不算
+        st = json.loads(orig_reg)
+        st["formal_runs"] = real_runs
+        reg_path.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "real formal_runs")
+        done = {r.get("class") for r in real_runs}
+        if X in done:
+            rc, r = xrun("x_real_runs")
+            check("真实登记表 formal_runs 里有 XSFundingCarry → 再跑是重复运行，不是正式运行（不拒绝）",
+                  (rc, r.get("formal_run"), bool((r.get("strategies") or {}).get(X, {}).get("formal_repeat"))), (0, False, True))
+        if "PremiumFade" not in done:
+            rc, r = run("p_real_runs")
+            check("真实登记表 formal_runs 只记了别的类 → PremiumFade 照常是正式运行", (rc, r.get("formal_run")), (0, True))
+        reg_path.write_text(orig_reg, encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "restore 3")
 
 
 def main() -> int:
