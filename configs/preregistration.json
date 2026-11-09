@@ -211,7 +211,19 @@
     }
   },
   "changes": [],
-  "formal_runs": [],
+  "formal_runs": [
+    {
+      "class": "XSFundingCarry",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261109_013316",
+      "run_dir": "user_data/research/run_20261109_013316",
+      "commit": "bc13af9c409676b95c3488019953b6f25635f9ff",
+      "sha256": "eeed49e28dd54258f63522d1b565e6402624243ae40239c82e6590666e63e85c",
+      "registry_sha256": "843e35f3b9c6889e618aa42626f3fcb5bc66c7261ac9960b0cd27dd4d72d457f",
+      "date_utc": "2026-11-09T01:33:35Z"
+    }
+  ],
   "results": [
     {
       "class": "XSFundingCarry",
