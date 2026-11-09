@@ -1,0 +1,6 @@
+bash scripts/round5_week_check.sh --strategy XSFundingCarry --config configs/config.okx-research-funding.json
+第 5 轮管道检查（一周小窗口，只数笔数和资金费是否非零，不看收益）：XSFundingCarry，20261101-20261108
+  配置：configs/config.okx-research-funding.json + configs/research-overrides/XSFundingCarry.json；数据目录 user_data/data/okx-funding
+  交易 20 笔（按 enter_tag：xsfund_long 10、xsfund_short 10），有交易的币 20 个
+  funding_fees 不为 0 的交易：20/20（100%）
+  （收益没有打印；完整日志和结果在 user_data/backtest_results/round5_week/XSFundingCarry_20261108_171456）

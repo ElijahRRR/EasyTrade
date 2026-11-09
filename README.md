@@ -11,6 +11,7 @@
 > 第 4 轮（冻结版 NFI 低杠杆逐年回测 + 币安模拟盘）：[`docs/nfi-yearly.md`](docs/nfi-yearly.md)、[`docs/forward-test.md`](docs/forward-test.md)、
 > [`docs/forward-monitoring.md`](docs/forward-monitoring.md)，见下面「第 4 步：NFI 按年回测和模拟盘」。
 > 第 5 轮（4 个和趋势无关的新机制，规格冻结、每个只测一次）：[`docs/round5-preregistration.md`](docs/round5-preregistration.md)，见下面「第 5 步：新策略类型（预注册，只测一次）」。
+> 第 5 轮运行 C 结果（XSFundingCarry 未通过，走步盈亏因子 1.07 < 1.1）：[`docs/research-runs/2026-11-09-round5-runC/`](docs/research-runs/2026-11-09-round5-runC/README.md)。
 
 ---
 
@@ -591,6 +592,8 @@ freqtrade 自己的 MaxDrawdown 保护只看已平仓的交易；项目硬规则
 > **2026-11-08 起（David 的决定，在任何真实数据回测之前）：所有研究都在美国 VPS 上用 OKX 数据跑。**
 > XSFundingCarry 不再等币安：资金费用 OKX 官方历史归档（2022-03 起），研究从 2022-04-01 开始，没有 2020 留出段（见下面第 5 节「运行 C」和文档第 6.5 节）。
 > 要用币安的部分（XSFundingCarry 的币安复核、CapitulationRebound / NewListingShortHedged 的第二阶段）推迟到整个项目准备上模拟盘 / 实盘时再做。
+>
+> **2026-11-09 运行 C 已经正式跑过：XSFundingCarry 未通过**（走步盈亏因子 1.07 < 1.1，其他都过了；资金费只占利润约两成）。不补救、不重跑。结果和诊断：[`docs/research-runs/2026-11-09-round5-runC/`](docs/research-runs/2026-11-09-round5-runC/README.md)。还没跑的是运行 A、B。
 
 | 策略（文件在 `user_data/strategies/`） | 机制 | 周期 / 方向 | 在哪测 | 研究配置 + 自己的研究设置 | 第 2 节里自己的"算失败" |
 |---|---|---|---|---|---|
@@ -624,7 +627,7 @@ make prereg-write ARGS="--force"      # （只在正式运行之前）改过策�
 - 还要和登记的一样，否则**停止（退出码 4）**：交易所和阶段（登记表 `venue` / `stages`）、研究配置（`config` / `stages."N".config`）、
   运行设置（登记表 `run_settings`：手续费 0.0007、回撤上限 15、最少 30 笔、PF 比例 0.6、起始日期、切分、走步、预热、是否保留下架币、2020 留出段等），
   research-override 也不能多出没登记的。第二阶段的配置还没写进登记表之前，第二阶段的运行会被拒绝。
-- 每个类、每个阶段只正式运行一次：正式运行会记进本机的 `user_data/research/formal_runs.jsonl`（屏幕上会提示），**把这几行复制进登记表的 `formal_runs`、提交 git**；
+- 每个类、每个阶段只正式运行一次：正式运行会记进本机的 `user_data/research/formal_runs.jsonl`（提示只写在结果目录的 `research.log` 里，屏幕上看不到；直接 `cat` 这个文件），**把这几行复制进登记表的 `formal_runs`、提交 git**；
   之后同一个类、同一个阶段再跑只算"重复运行"（不是正式运行），`make prereg-write ARGS="--force"` 也会拒绝改这个类的登记。
 - 只是想试跑（结果不算数）：`RESEARCH_ALLOW_UNREGISTERED=1 make research ARGS="..."`（会大声提醒，`plan.json` 里 `formal_run = false`，报告开头写"!! 不是正式的预注册运行"）。
 
@@ -740,6 +743,7 @@ make research ARGS="--config configs/config.okx-research-funding.json --strategi
 # 4) 一周小窗口管道检查（只打印笔数和 funding_fees 不为 0 的笔数）
 make pipeline-week ARGS="--strategy XSFundingCarry --config configs/config.okx-research-funding.json"
 # 5) 正式运行（每个规格只跑一次；数据已经在第 3 步准备好，不再下载；不加 RESEARCH_PRE_HOLDOUT）
+#    2026-11-09 已经跑过（未通过，见上面第 5 步开头的说明）：同样的命令再跑只算"重复运行"，不是正式运行
 make research ARGS="--config configs/config.okx-research-funding.json --strategies XSFundingCarry --start 20220401 --no-download"
 ```
 
@@ -828,7 +832,7 @@ make research ARGS="--config configs/config.okx-research-funding.json --strategi
 
 ### 8. 组合检查（3.4 节：几次运行合在一起）
 
-只放**通过**的策略（默认挑选只看训练段，可能挑到"无效 / 测不了"的，所以一定用 `--strategies` 写明）。2026-11-08 起三次运行都在美国 VPS 上、都是 OKX 数据，
+只放**通过**的策略（默认挑选只看训练段，可能挑到"无效 / 测不了"的，所以一定用 `--strategies` 写明）。XSFundingCarry 在运行 C 未通过（2026-11-09），不进组合；下面的命令只是写法示例。2026-11-08 起三次运行都在美国 VPS 上、都是 OKX 数据，
 XSFundingCarry 的资金曲线来自运行 C 那个结果目录：
 
 ```bash
