@@ -222,6 +222,28 @@
       "sha256": "eeed49e28dd54258f63522d1b565e6402624243ae40239c82e6590666e63e85c",
       "registry_sha256": "843e35f3b9c6889e618aa42626f3fcb5bc66c7261ac9960b0cd27dd4d72d457f",
       "date_utc": "2026-11-09T01:33:35Z"
+    },
+    {
+      "class": "PremiumFade",
+      "stage": null,
+      "venue": "okx",
+      "run_id": "run_20261110_031717",
+      "run_dir": "user_data/research/run_20261110_031717",
+      "commit": "fe432abe9566d6a5148fb578aac9bd0bcc58ba95",
+      "sha256": "146ffb3f06403b35443c34b9c3fdee644c8ecffd4c3b934b2d78c69bfd22f91e",
+      "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
+      "date_utc": "2026-11-10T03:17:46Z"
+    },
+    {
+      "class": "CapitulationRebound",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261110_031717",
+      "run_dir": "user_data/research/run_20261110_031717",
+      "commit": "fe432abe9566d6a5148fb578aac9bd0bcc58ba95",
+      "sha256": "b67cfd55956119e90233898b62226060350cdfafad9bca8f9abbcec1d95b28c9",
+      "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
+      "date_utc": "2026-11-10T03:17:46Z"
     }
   ],
   "results": [
