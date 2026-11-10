@@ -1,0 +1,6 @@
+bash scripts/round5_week_check.sh --strategy CapitulationRebound
+第 5 轮管道检查（一周小窗口，只数笔数和资金费是否非零，不看收益）：CapitulationRebound，20261101-20261108
+  配置：configs/config.okx-research.json + configs/research-overrides/CapitulationRebound.json
+  交易 5 笔（按 enter_tag：cr_long 5），有交易的币 5 个
+  funding_fees 不为 0 的交易：5/5（100%）
+  （收益没有打印；完整日志和结果在 user_data/backtest_results/round5_week/CapitulationRebound_20261109_170751）

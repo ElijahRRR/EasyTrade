@@ -17,6 +17,8 @@
 > 第 1 ~ 4 节原文不改，凡是和这条修订冲突的地方以第 6.5 节为准。
 >
 > **2026-11-09 运行 C（XSFundingCarry，OKX）正式运行：未通过**：走步拼接的盈亏因子 1.07 < 1.1，其他每一条都过了。不补救、不重跑；结果和诊断见第 6.6 节和 [`docs/research-runs/2026-11-09-round5-runC/`](research-runs/2026-11-09-round5-runC/README.md)。
+>
+> **2026-11-10 运行 A（PremiumFade、CapitulationRebound，OKX）正式运行：两个都未通过**：每一段都亏钱。见第 6.6 节和 [`docs/research-runs/2026-11-10-round5-runA/`](research-runs/2026-11-10-round5-runA/README.md)。
 
 ---
 
@@ -756,6 +758,16 @@ CapitulationRebound、NewListingShortHedged 的 `stages."2"` 加了 `deferred`�
 - 对运行 A 的提醒（2026-11-09，在看到运行 A 任何结果之前写下）：CapitulationRebound 的样本外和走步各段同样按 600 根预热裁币（5.3 节第 10 条），能交易的币会比训练段少；
   判定照登记的规则，不因为这一点改。
 - 第 5 轮的整体结论（3.5 节）要等运行 A、B 跑完再下。
+
+**运行 A：PremiumFade、CapitulationRebound（第 1 阶段，OKX），2026-11-10，运行目录 `run_20261110_031717`，commit `fe432ab`，登记表 sha256 `89dc750f269f…`：两个都未通过。**
+
+- CapitulationRebound：训练段 -21.28% / PF 0.51 / 回撤 27.04%，没看过的一段 -19.55% / PF 0.45 / 回撤 24.88%，样本外 -10.99% / PF 0.62，走步 -14.17% / PF 0.71；
+  2021 ~ 2026 每一年都亏；去掉盈利最多的 3 天后更亏（2.3 节自己的检查也未通过）。2020 留出段 +3.41%，只有 21 笔，只报告。第一阶段不通过 = 失败，币安第二阶段不做。
+- PremiumFade：每一段 PF 0.94 ~ 0.96、都亏钱，回撤 41% ~ 47%；2020 留出段 380 笔、-10.51%、回撤 21.83%，也未通过。每币每年 15 笔、能交易的币 54 个，所以是真的未通过、不是测不了。
+- 处理：不改参数、不放宽规则重跑；结论记进登记表 `results`，正式运行记录抄进 `formal_runs`。
+- 3.5 节第 2 条的诊断见 [`docs/research-runs/2026-11-10-round5-runA/`](research-runs/2026-11-10-round5-runA/README.md)；
+  成本占多少用新加的只读诊断工具 `scripts/research_costs.py --run-dir <结果目录>` 逐笔算（不在固定的研究脚本名单里，不影响正式运行，也不改变判定）。
+- 第 5 轮 4 个策略已有 3 个未通过，只剩运行 B（NewListingShortHedged）。
 
 ---
 
