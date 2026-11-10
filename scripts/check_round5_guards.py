@@ -11,6 +11,10 @@
      （"PENDING" = 还没固定：正式运行拒绝、合成数据只提醒；write 直接填上；改过 = 拒绝；没提交 = 不是正式运行）；
      复查后加的：运行设置 datadir（XSFundingCarry 登记了 user_data/data/okx-funding，换目录 = 拒绝）、第 1 阶段（以后加币安的第 2 阶段，
      OKX 再跑照样是重复运行）。
+  5. NewListingShortHedged 的排除清单（2026-11-10，不是加密币的合约不算新币）：scripts/okx_noncrypto_pairs.py 按 OKX 的
+     instCategory 生成清单（没有分类 = 出错、BTC 不是加密 = 出错、--check 核对），scripts/build_listings.py 读清单
+     （命令行 --exclude 或配置里的 nlsh_exclude_file）把它们记成 pre_existing + excluded，每年新币数和"同一天上线"的提醒都不算它们，
+     清单坏了 = 出错退出、不写文件；策略读这个上线日文件：清单里的币不做空、不算对冲窗口。
 
 用法：
   .venv/bin/python scripts/check_round5_guards.py
@@ -437,11 +441,124 @@ def test_prereg_funding_archive(tmp: Path, repo: Path, prereg: Any, run: Any, ok
         _git(repo, "commit", "-q", "-m", "restore 3")
 
 
+# ----------------------------------------------------------------------------
+# 5. NewListingShortHedged 的排除清单（不是加密币的合约不算新币）
+# ----------------------------------------------------------------------------
+def _store_1d(datadir: Path, pair: str, start: str, end: str = "2026-11-09") -> None:
+    from freqtrade.data.history import get_datahandler
+    from freqtrade.enums import CandleType
+
+    idx = pd.date_range(start, end, freq="1D", tz="UTC")
+    df = pd.DataFrame({"date": idx, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0})
+    get_datahandler(datadir, "feather").ohlcv_store(pair, "1d", df, CandleType.FUTURES)
+
+
+def test_listings_exclude(tmp: Path) -> None:
+    print("5. NewListingShortHedged 的排除清单：不是加密币的合约（股票、商品……）不算新币")
+    import hashlib
+
+    tmp = tmp / "listings_exclude"
+    datadir = tmp / "data" / "okx"
+    (datadir / "futures").mkdir(parents=True)
+    tradfi = ["AAPL", "NVDA", "MSFT", "SPY", "CL"]
+    crypto_batch = ["T0", "T1", "T2", "T3", "T4"]
+    for b in ("BTC", "ETH"):
+        _store_1d(datadir, f"{b}/USDT:USDT", "2020-12-19")
+    _store_1d(datadir, "NEW/USDT:USDT", "2023-05-01")
+    for b in tradfi:
+        _store_1d(datadir, f"{b}/USDT:USDT", "2026-03-04")
+    for b in crypto_batch:
+        _store_1d(datadir, f"{b}/USDT:USDT", "2026-03-11")
+    cats = {"BTC": "1", "ETH": "1", "NEW": "1", "AAPL": "3", "NVDA": "3", "MSFT": "3", "SPY": "3", "CL": "4",
+            "XAU": "4", "WEIRD": "9", **{b: "1" for b in crypto_batch}}
+    snap = [{"instId": f"{b}-USDT-SWAP", "instCategory": c} for b, c in cats.items()] + [{"instId": "BTC-USD-SWAP", "instCategory": "1"}]
+    snap_p = tmp / "okx_swap_instruments.json"
+    snap_p.write_text(json.dumps(snap), encoding="utf-8")
+    excl = tmp / "nlsh-exclude.okx.json"
+
+    def tool(*args: str) -> tuple[int, str]:
+        r = subprocess.run([sys.executable, str(ROOT_DIR / "scripts" / "okx_noncrypto_pairs.py"), *args],
+                           capture_output=True, text=True, cwd=str(tmp))
+        return r.returncode, r.stdout + r.stderr
+
+    def bl(*args: str) -> tuple[int, str]:
+        r = subprocess.run([sys.executable, str(ROOT_DIR / "scripts" / "build_listings.py"), "--datadir", str(datadir),
+                            "--data-start", "20201219", *args], capture_output=True, text=True, cwd=str(tmp))
+        return r.returncode, r.stdout + r.stderr
+
+    rc, _ = tool("--instruments", str(snap_p), "--out", str(excl))
+    doc = json.loads(excl.read_text(encoding="utf-8")) if excl.is_file() else {}
+    want = {"AAPL/USDT:USDT": "股票", "CL/USDT:USDT": "商品", "MSFT/USDT:USDT": "股票", "NVDA/USDT:USDT": "股票",
+            "SPY/USDT:USDT": "股票", "WEIRD/USDT:USDT": "非加密（instCategory 9）", "XAU/USDT:USDT": "商品"}
+    check("okx_noncrypto_pairs：instCategory 不是 1 的 USDT 永续都排除（币本位 BTC-USD-SWAP 不管；不认识的代码也排除）",
+          (rc, doc.get("pairs"), doc.get("version")), (0, want, 1))
+    check("okx_noncrypto_pairs：记下快照的 sha256 和分类计数",
+          ((doc.get("source") or {}).get("snapshot_sha256"), (doc.get("source") or {}).get("usdt_swaps")),
+          (hashlib.sha256(snap_p.read_bytes()).hexdigest(), len(cats)))
+    check("okx_noncrypto_pairs --check：同一个快照 → 一致", tool("--instruments", str(snap_p), "--check", str(excl))[0], 0)
+    bad_check = tmp / "excl_modified.json"
+    bad_check.write_text(json.dumps({**doc, "pairs": {k: v for k, v in want.items() if k != "SPY/USDT:USDT"}}), encoding="utf-8")
+    check("okx_noncrypto_pairs --check：清单少了一个 → 不一致（退出码 1）", tool("--instruments", str(snap_p), "--check", str(bad_check))[0], 1)
+    nocat = tmp / "snap_nocat.json"
+    nocat.write_text(json.dumps([{"instId": "BTC-USDT-SWAP"}, {"instId": "AAPL-USDT-SWAP", "instCategory": "3"}]), encoding="utf-8")
+    rc, out = tool("--instruments", str(nocat), "--out", str(tmp / "x.json"))
+    check("okx_noncrypto_pairs：快照里没有 instCategory → 出错（不猜），不写文件", (rc, (tmp / "x.json").exists(), "instCategory" in out), (1, False, True))
+    btcbad = tmp / "snap_btcbad.json"
+    btcbad.write_text(json.dumps([{"instId": "BTC-USDT-SWAP", "instCategory": "3"}]), encoding="utf-8")
+    check("okx_noncrypto_pairs：BTC 不是加密货币 → 快照不对，出错", tool("--instruments", str(btcbad), "--out", str(tmp / "x.json"))[0], 1)
+
+    out_l = tmp / "listings.json"
+    rc, out = bl("--exclude", str(excl), "--out", str(out_l))
+    ld = json.loads(out_l.read_text(encoding="utf-8")) if out_l.is_file() else {"pairs": {}}
+    lp = ld["pairs"]
+    check("build_listings --exclude：清单里的币 = pre_existing + excluded（原因）",
+          (rc, lp.get("AAPL/USDT:USDT", {}).get("pre_existing"), lp.get("AAPL/USDT:USDT", {}).get("excluded"),
+           lp.get("CL/USDT:USDT", {}).get("excluded")), (0, True, "股票", "商品"))
+    check("build_listings --exclude：加密新币照旧是新币，老币照旧是老币（没有 excluded）",
+          (lp.get("NEW/USDT:USDT", {}).get("pre_existing"), "excluded" in lp.get("NEW/USDT:USDT", {}),
+           lp.get("ETH/USDT:USDT", {}).get("pre_existing"), "excluded" in lp.get("ETH/USDT:USDT", {})), (False, False, True, False))
+    check("build_listings --exclude：每年新币数不算排除的币；记下清单路径、sha256、本地没有数据的",
+          (ld.get("new_listings_per_year"), ld.get("excluded_pairs"), ld.get("exclude_sha256"), ld.get("excluded_without_data")),
+          ({"2023": 1, "2026": 5}, 5, hashlib.sha256(excl.read_bytes()).hexdigest(), ["WEIRD/USDT:USDT", "XAU/USDT:USDT"]))
+    check("build_listings --exclude：排除的 5 个同一天上线 → 不再提醒；另一批 5 个加密新币照样提醒、列出币名",
+          ("2026-03-04" in out, "T0 T1 T2 T3 T4" in out), (False, True))
+    rc, out = bl("--out", str(tmp / "listings_noexcl.json"))
+    check("build_listings 不用清单：股票这一批照样提醒、列出币名（也可能是交易所同一天成批上线）",
+          (rc, "2026-03-04" in out, "AAPL CL MSFT NVDA SPY" in out, "成批上线" in out), (0, True, True, True))
+
+    cfg = tmp / "cfg.json"
+    cfg.write_text(json.dumps({"exchange": {"name": "okx"}, "nlsh_exclude_file": str(excl)}), encoding="utf-8")
+    out_c = tmp / "listings_cfg.json"
+    rc, _ = bl("--config", str(cfg), "--out", str(out_c))
+    lc = json.loads(out_c.read_text(encoding="utf-8")) if out_c.is_file() else {"pairs": {}}
+    check("build_listings --config：配置里的 nlsh_exclude_file 也认（和 --exclude 一样）",
+          (rc, lc["pairs"] == ld["pairs"], lc.get("exclude_sha256") == ld.get("exclude_sha256")), (0, True, True))
+    for label, content in (("BTC 在清单里（对冲腿）", {"version": 1, "pairs": {"BTC/USDT:USDT": "股票"}}),
+                           ("格式不对（version 2）", {"version": 2, "pairs": {"AAPL/USDT:USDT": "股票"}}),
+                           ("原因是空的", {"version": 1, "pairs": {"AAPL/USDT:USDT": " "}})):
+        bad = tmp / "bad_excl.json"
+        bad.write_text(json.dumps(content), encoding="utf-8")
+        target = tmp / "listings_bad.json"
+        rc, _ = bl("--exclude", str(bad), "--out", str(target))
+        check(f"build_listings：排除清单{label} → 出错退出，不写上线日文件", (rc, target.exists()), (1, False))
+    rc, _ = bl("--exclude", str(tmp / "nope.json"), "--out", str(tmp / "listings_bad.json"))
+    check("build_listings：排除清单不存在 → 出错退出（不会悄悄照旧把它们当新币）", (rc, (tmp / "listings_bad.json").exists()), (1, False))
+
+    s = _strategy(NewListingShortHedged, RunMode.BACKTEST, {})
+    s.config["nlsh_listings_file"] = str(out_l)
+    allp = sorted(lp)
+    check("策略读上线日文件：股票不做空（上线日 None），加密新币照旧有上线日",
+          (s.nlsh_listing_day("AAPL/USDT:USDT"), s.nlsh_listing_day("CL/USDT:USDT"), str(s.nlsh_listing_day("NEW/USDT:USDT"))),
+          (None, None, "2023-05-01"))
+    check("策略的对冲窗口只算加密新币（NEW + T0~T4 = 6 个；股票、商品、老币、BTC 不算）", len(s._windows(allp)), 6)
+
+
 def main() -> int:
     test_funding_window()
     test_data_ended()
     with tempfile.TemporaryDirectory(prefix="round5_guards_") as t:
         test_prereg_rules(Path(t))
+        test_listings_exclude(Path(t))
     print()
     if FAILS:
         print(f"不通过：有 {len(FAILS)} 项不对：")

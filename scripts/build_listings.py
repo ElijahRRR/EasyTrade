@@ -19,7 +19,14 @@
   不写时 = 所有币里最早的第一根K线。
   !! 本地数据是分几次、从不同日期开始下载的（例如研究币池从 2019 年起下、其他币从 2020-12 才开始下）时，
      一定要写 --data-start：否则"2020-12 才开始下载的老币"第一根K线晚于最早的那个币，会被当成 2020-12 新上线的币。
-     脚本发现"很多币的第一根K线是同一天、而且晚于数据起点"时会提醒（那多半是某次下载的开始日期，不是真的上线日）。
+     脚本发现"很多币的第一根K线是同一天、而且晚于数据起点"时会提醒，并列出是哪些币：可能是某次下载的开始日期（不是真的上线日），
+     也可能是交易所同一天成批上线的合约（例如 OKX 2026 年成批上线的股票、ETF、商品永续），看币名判断。
+
+排除清单（不是加密币的合约，2026-11-10 起，预注册文档 6.7 节）：
+  配置里写 "nlsh_exclude_file": "<路径>"（或者命令行 --exclude <路径>）时，清单里的币记为 pre_existing（不算新上线，
+  策略不做空、也不算进对冲窗口），另外写上 "excluded": "<原因>"。清单由 scripts/okx_noncrypto_pairs.py 从交易所自己的
+  合约分类生成，格式：{"version": 1, "exchange": "okx", "pairs": {"AAPL/USDT:USDT": "股票", ...}, ...}。
+  清单写了但读不了 / 格式不对 = 出错退出（不会悄悄照旧把它们当新币）。
 
 用法：
   .venv/bin/python scripts/build_listings.py --datadir user_data/data/okx --data-start 20201219
@@ -60,6 +67,9 @@ ENTRY_DELAY_DAYS = 14
 STALE_DAYS = 3
 # 同一天"上线"的币达到这么多个、而且晚于数据起点时提醒：多半是某次下载的开始日期，不是真的上线日
 CLUSTER_WARN = 5
+# 排除清单的格式版本（scripts/okx_noncrypto_pairs.py 写的）；配置里指定排除清单的键（和策略的 nlsh_listings_file 一样写在研究配置里）
+EXCLUDE_FORMAT_VERSION = 1
+EXCLUDE_CONFIG_KEY = "nlsh_exclude_file"
 
 
 def default_output(datadir: Path) -> Path:
@@ -78,6 +88,39 @@ def _load_config(path: str) -> dict[str, Any]:
     from freqtrade.configuration.load_config import load_from_files
 
     return load_from_files([path])
+
+
+def load_exclusions(path: Path) -> dict[str, str]:
+    """排除清单 {pair: 原因}。读不了 / 格式不对 → ValueError（中文原因）。BTC 不能在清单里（它是对冲腿）。"""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"读不了排除清单 {path}：{exc}") from None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"排除清单 {path} 不是合法的 JSON：{exc}") from None
+    if not isinstance(doc, dict) or doc.get("version") != EXCLUDE_FORMAT_VERSION or not isinstance(doc.get("pairs"), dict):
+        raise ValueError(f"排除清单 {path} 格式不对（要 version = {EXCLUDE_FORMAT_VERSION}、pairs = {{交易对: 原因}}）")
+    out: dict[str, str] = {}
+    for pair, why in doc["pairs"].items():
+        if not isinstance(pair, str) or not pair.endswith(f"/{QUOTE}:{QUOTE}") or not isinstance(why, str) or not why.strip():
+            raise ValueError(f"排除清单 {path} 里有一项格式不对：{pair!r}: {why!r}（要 \"XXX/{QUOTE}:{QUOTE}\": \"原因\"）")
+        out[pair] = why.strip()
+    if BTC_PAIR in out:
+        raise ValueError(f"排除清单 {path} 里有 {BTC_PAIR}：它是对冲腿，不能排除")
+    return out
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(ROOT_DIR))
+    except ValueError:
+        return str(path.resolve())
 
 
 def scan_datadir(datadir: Path, fmt: str, quote: str = QUOTE) -> dict[str, dict[str, Any]]:
@@ -116,9 +159,12 @@ def build_document(
     exchange: str,
     datadir: Path,
     data_start: date | None,
+    excluded: dict[str, str] | None = None,
+    exclude_file: Path | None = None,
 ) -> dict[str, Any]:
     first_min = min(v["first"] for v in scans.values())
     start = data_start or first_min
+    excluded = excluded or {}
     pairs: dict[str, dict[str, Any]] = {}
     for pair in sorted(scans):
         v = scans[pair]
@@ -126,19 +172,27 @@ def build_document(
             "first_candle": v["first"].isoformat(),
             "last_candle": v["last"].isoformat(),
             "candles": v["candles"],
-            "pre_existing": bool(v["first"] <= start),
+            "pre_existing": bool(v["first"] <= start) or pair in excluded,
         }
+        if pair in excluded:
+            pairs[pair]["excluded"] = excluded[pair]
     new = {p: scans[p]["first"] for p, rec in pairs.items() if not rec["pre_existing"]}
     by_year = Counter(str(d.year) for d in new.values())
     by_entry_year = Counter(str((d + timedelta(days=ENTRY_DELAY_DAYS)).year) for d in new.values())
-    try:
-        datadir_txt = str(datadir.resolve().relative_to(ROOT_DIR))
-    except ValueError:
-        datadir_txt = str(datadir.resolve())
+    datadir_txt = _rel(datadir)
+    doc_excl: dict[str, Any] = {}
+    if exclude_file is not None:
+        doc_excl = {
+            "exclude_file": _rel(exclude_file),
+            "exclude_sha256": _sha256(exclude_file),
+            "excluded_pairs": sum(1 for r in pairs.values() if "excluded" in r),
+            "excluded_without_data": sorted(set(excluded) - set(scans)),
+        }
     return {
         "_note": (
             "由 scripts/build_listings.py 生成，不要手改。每个币第一根 1d 永续K线的日期（UTC）= 上线日（第 1 天）；"
-            "pre_existing = 第一根K线 <= 数据起点（老币，不算新上线）。给 NewListingShortHedged 用。"
+            "pre_existing = 第一根K线 <= 数据起点（老币），或者在排除清单里（有 excluded = 原因，不是加密币的合约）："
+            "这两种都不算新上线。给 NewListingShortHedged 用。"
         ),
         "version": FORMAT_VERSION,
         "exchange": exchange,
@@ -148,6 +202,7 @@ def build_document(
         "data_start": start.isoformat(),
         "data_start_source": "--data-start" if data_start else "最早的第一根K线",
         "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        **doc_excl,
         "pairs": pairs,
         "new_listings_per_year": dict(sorted(by_year.items())),
         "new_listings_per_entry_year": dict(sorted(by_entry_year.items())),
@@ -183,7 +238,8 @@ def pairs_fragment(pairs: list[str], btc: str = BTC_PAIR) -> str:
 def print_summary(doc: dict[str, Any], out: Path) -> None:
     pairs = doc["pairs"]
     n_total = len(pairs)
-    n_old = sum(1 for r in pairs.values() if r["pre_existing"])
+    n_excl = sum(1 for r in pairs.values() if "excluded" in r)
+    n_old = sum(1 for r in pairs.values() if r["pre_existing"]) - n_excl
     last_all = max(date.fromisoformat(r["last_candle"]) for r in pairs.values())
     stale = sorted(
         (p, r["last_candle"])
@@ -192,7 +248,17 @@ def print_summary(doc: dict[str, Any], out: Path) -> None:
     )
     print(f"新币上线日（数据目录 {doc['datadir']}，{doc['timeframe']} 永续K线，交易所 {doc['exchange'] or '未知'}）")
     print(f"  数据起点：{doc['data_start']}（{doc['data_start_source']}）；数据最后一天：{last_all}")
-    print(f"  一共 {n_total} 个 USDT 永续：老币（第一根K线 <= 数据起点，不算新币）{n_old} 个，新上线 {n_total - n_old} 个")
+    print(f"  一共 {n_total} 个 USDT 永续：老币（第一根K线 <= 数据起点，不算新币）{n_old} 个，"
+          + (f"排除清单里的（不是加密币，不算新币）{n_excl} 个，" if "exclude_file" in doc else "")
+          + f"新上线 {n_total - n_old - n_excl} 个")
+    if "exclude_file" in doc:
+        why = Counter(r["excluded"] for r in pairs.values() if "excluded" in r)
+        print(f"  排除清单 {doc['exclude_file']}（sha256 {doc['exclude_sha256'][:12]}…）：本地有数据的 {n_excl} 个 = "
+              + ("、".join(f"{k} {v} 个" for k, v in sorted(why.items(), key=lambda kv: (-kv[1], kv[0]))) or "0 个"))
+        gone = doc.get("excluded_without_data") or []
+        if gone:
+            print(f"    清单里另有 {len(gone)} 个本地没有 1d 数据（不影响）：{' '.join(p.split('/')[0] for p in gone[:30])}"
+                  + (f" 等" if len(gone) > 30 else ""))
     if BTC_PAIR not in pairs:
         print(f"  !! 没有 {BTC_PAIR} 的 1d 数据：NewListingShortHedged 没法对冲，不会开新币空单。先下载 BTC 的数据。")
     elif not pairs[BTC_PAIR]["pre_existing"]:
@@ -217,9 +283,12 @@ def print_summary(doc: dict[str, Any], out: Path) -> None:
     )
     for day, cnt in sorted(clusters.items()):
         if cnt >= CLUSTER_WARN:
+            members = sorted(p.split("/")[0] for p, r in pairs.items() if not r["pre_existing"] and r["first_candle"] == day)
+            names = " ".join(members[:15]) + (f" 等 {len(members)} 个" if len(members) > 15 else "")
             print(
-                f"  !! 有 {cnt} 个币的第一根K线都是 {day}（晚于数据起点 {start}）：这多半是某次下载的开始日期，不是真的上线日。"
-                f"如果是这样，用 --data-start {day.replace('-', '')}（或更晚）重新生成，否则这些老币会被当成新币做空。"
+                f"  !! 有 {cnt} 个币的第一根K线都是 {day}（晚于数据起点 {start}）：{names}。"
+                f"可能是某次下载的开始日期（不是真的上线日）：如果是，用 --data-start {day.replace('-', '')}（或更晚）重新生成，"
+                "否则这些老币会被当成新币做空；也可能是交易所同一天成批上线的合约，看币名判断。"
             )
     print(f"已写入 {out}")
 
@@ -233,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=None, help="输出文件（默认 user_data/listings/<数据目录名>_first_candle.json）")
     ap.add_argument("--format", default=None, choices=("feather", "parquet"), help="K线文件格式（默认取配置，没有配置时 feather）")
     ap.add_argument("--write-pairs", type=Path, default=None, help="另外写一个交易对配置片段（全部 USDT 永续，BTC 放最后）")
+    ap.add_argument("--exclude", type=Path, default=None,
+                    help=f"排除清单（不是加密币的合约，不算新币；默认取配置里的 \"{EXCLUDE_CONFIG_KEY}\"，没有就不排除）")
     args = ap.parse_args(argv)
 
     try:
@@ -260,6 +331,19 @@ def main(argv: list[str] | None = None) -> int:
         exchange = datadir.resolve().name.split("-")[0]
     fmt = args.format or str(cfg.get("dataformat_ohlcv") or "feather")
     data_start = _ymd(args.data_start, "--data-start") if args.data_start else None
+    exclude_file: Path | None = None
+    if args.exclude is not None:
+        exclude_file = args.exclude if args.exclude.is_absolute() else (Path.cwd() / args.exclude)
+    elif cfg.get(EXCLUDE_CONFIG_KEY):
+        raw = Path(str(cfg[EXCLUDE_CONFIG_KEY]))
+        exclude_file = raw if raw.is_absolute() else (ROOT_DIR / raw)  # 和策略的 nlsh_listings_file 一样按仓库根目录算
+    excluded: dict[str, str] = {}
+    if exclude_file is not None:
+        try:
+            excluded = load_exclusions(exclude_file)
+        except ValueError as exc:
+            print(f"错误：{exc}", file=sys.stderr)
+            return 1
 
     if not (datadir / "futures").is_dir():
         print(f"错误：{datadir}/futures 不存在（还没有下载永续合约数据？）", file=sys.stderr)
@@ -280,7 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if data_start is not None and data_start < min(v["first"] for v in scans.values()) - timedelta(days=366):
         print(f"提示：--data-start {data_start} 比所有数据都早一年以上，所有币都会按第一根K线算上线日（老币也可能被当成新币）。")
-    doc = build_document(scans, exchange=exchange, datadir=datadir, data_start=data_start)
+    doc = build_document(scans, exchange=exchange, datadir=datadir, data_start=data_start,
+                         excluded=excluded, exclude_file=exclude_file)
     write_json_atomic(out, doc)
     print_summary(doc, out)
     if args.write_pairs is not None:
