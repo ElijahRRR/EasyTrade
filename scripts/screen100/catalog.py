@@ -623,7 +623,7 @@ def x19(P, s, n):
     m = r[BTC] if BTC in r.columns else r.mean(axis=1)
     md = m - I.sma(m, n)
     num = I.sma(r.sub(I.sma(r, n)).mul(md ** 2, axis=0), n)
-    den = I.stddev(r, n) * (I.sma(md ** 2, n))
+    den = I.stddev(r, n).mul(I.sma(md ** 2, n), axis=0)  # 2026-11-14 修：以前 DataFrame*Series 按列对齐，全是 NaN，0 笔交易
     return XS(P, s, -(num / (den + I.EPS)), 7)
 
 
