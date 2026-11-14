@@ -1,0 +1,6 @@
+bash scripts/round5_week_check.sh --strategy PremiumFade
+第 5 轮管道检查（一周小窗口，只数笔数和资金费是否非零，不看收益）：PremiumFade，20261101-20261108
+  配置：configs/config.okx-research.json
+  交易 20 笔（按 enter_tag：pf_long 6、pf_short 14），有交易的币 15 个
+  funding_fees 不为 0 的交易：16/20（80%）
+  （收益没有打印；完整日志和结果在 user_data/backtest_results/round5_week/PremiumFade_20261109_170739）

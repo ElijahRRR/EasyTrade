@@ -18,6 +18,8 @@
   7. 端到端：假的研究目录（回测结果 zip + K线 + 日志）→ research_report.py report --prereg
   8. research_portfolio.py --run-dirs：一个 OKX 目录 + 一个币安目录合并，标注"跨交易所近似"，K线各读各的数据目录；
      和参考趋势策略的相关系数表
+  9. research_costs.py（成本诊断，2026-11-10 加）：手算的成本、资金费、扣成本前收益和盈亏因子；读假的研究目录、各段的顺序；
+     2026-11-14 加的按合约分类拆开（分类 CSV、对冲腿单独一组、各组相加 = 合计）
 
 退出码：0 = 全部通过；1 = 有不对的。
 """
@@ -839,6 +841,80 @@ def test_run_dirs(tmp: Path) -> None:
 
 
 # ----------------------------------------------------------------------------
+# 9. 成本诊断（scripts/research_costs.py）
+# ----------------------------------------------------------------------------
+def test_costs(tmp: Path) -> None:
+    print("9. research_costs.py：成本、资金费、扣成本前收益（手算）")
+    import research_costs as rc
+    A = "AAA/USDT:USDT"
+    o = ts("2023-01-02T00:00:00")
+    # 做多 2 个，100 → 110，每边费率 0.001，资金费 -0.5：成本 0.2 + 0.22 = 0.42，净收益 20 - 0.42 - 0.5 = 19.08
+    t1 = trade(A, o, o + DAY, 100.0, 110.0, amount=2.0, funding=-0.5)
+    # 做空 1 个，50 → 55，每边费率 0.001，资金费 +0.3：成本 0.05 + 0.055 = 0.105，净收益 -5 - 0.105 + 0.3 = -4.805
+    t2 = trade(A, o + 2 * DAY, o + 3 * DAY, 50.0, 55.0, amount=1.0, short=True, funding=0.3)
+    for tr, cost in ((t1, 0.42), (t2, 0.105)):
+        tr["fee_open"] = tr["fee_close"] = 0.001
+        tr["profit_abs"] -= cost
+    check("一笔的成本（做多）", rc.trade_costs(t1)[0], 0.42)
+    check("一笔的成本（做空）", rc.trade_costs(t2)[0], 0.105)
+    s = rc.summarize([t1, t2])
+    check("合计：交易、平均名义、成本、资金费、净收益",
+          [s["trades"], s["avg_notional"], s["cost"], s["funding"], s["net"]], [2, 125.0, 0.525, -0.2, 14.275])
+    check("扣成本前 = 净收益 + 成本；价格部分 = 扣成本前 − 资金费", [s["pre_cost"], s["price"]], [14.8, 15.0])
+    check("净 PF = 19.08 / 4.805；扣成本前 PF = 19.5 / 4.7", [s["pf"], s["pf_pre_cost"]], [19.08 / 4.805, 19.5 / 4.7])
+    check("成本占扣成本前 = 0.525 / 14.8", s["cost_share"], 0.525 / 14.8)
+    check("扣成本前亏钱 → 成本占比没有数", rc.summarize([t2])["cost_share"], None)
+    check("没有交易 → 0 笔、平均名义没有数", [rc.summarize([])["trades"], rc.summarize([])["avg_notional"]], [0, None])
+    run_dir = tmp / "e2e_okx"
+    if not run_dir.is_dir():
+        ok("端到端的假研究目录存在（第 7 节先建）", False)
+        return
+    data = rc.collect(run_dir, ["OldTrend"])
+    segs = [seg for seg, _ in data["OldTrend"]]
+    check("段的顺序：训练段、没看过的一段、样本外、2020 留出段", segs, ["train", "holdout", "test", "preholdout"])
+    train = dict(data["OldTrend"])["train"]
+    check("手续费 0 的假交易：成本 0、扣成本前 = 净收益", [train["cost"], train["pre_cost"] - train["net"]], [0.0, 0.0])
+    lines = rc.render(data, run_dir)
+    ok("表格里有\"扣成本前 PF\"和 2020 那一段的中文名", any("扣成本前 PF" in x for x in lines)
+       and any("研究开始前的留出段" in x for x in lines))
+
+    # 2026-11-14：按合约分类拆开（运行 B：加密新币 / 股票 / 商品 / 对冲腿）
+    csv_p = tmp / "cats.csv"
+    csv_p.write_text("﻿freqtrade_pair,instId,instCategory,diagnostic_category\n"
+                     "NEW/USDT:USDT,NEW-USDT-SWAP,1,crypto\nAAPL/USDT:USDT,AAPL-USDT-SWAP,3,stock\n"
+                     "XAU/USDT:USDT,XAU-USDT-SWAP,4,commodity\nBTC/USDT:USDT,BTC-USDT-SWAP,1,crypto\n", encoding="utf-8")
+    cats = rc.load_categories(csv_p)
+    check("分类文件：diagnostic_category 换成中文（带 BOM 的 CSV 也认）",
+          [cats["NEW/USDT:USDT"], cats["AAPL/USDT:USDT"], cats["XAU/USDT:USDT"]], ["加密币", "股票", "商品"])
+    csv2 = tmp / "cats_inst.csv"
+    csv2.write_text("freqtrade_pair,instCategory\nAAPL/USDT:USDT,3\nNEW/USDT:USDT,1\n", encoding="utf-8")
+    check("分类文件没有 diagnostic_category → 用 instCategory（3 = 股票）", rc.load_categories(csv2)["AAPL/USDT:USDT"], "股票")
+    bad = tmp / "cats_bad.csv"
+    bad.write_text("pair,category\nAAPL/USDT:USDT,stock\n", encoding="utf-8")
+    try:
+        rc.load_categories(bad)
+        ok("分类文件没有 freqtrade_pair 列 → 报错", False)
+    except ValueError:
+        ok("分类文件没有 freqtrade_pair 列 → 报错", True)
+    s1 = trade("NEW/USDT:USDT", o, o + DAY, 10.0, 8.0, amount=1.0, short=True, tag="nlsh_short")      # +2
+    s2 = trade("NEW/USDT:USDT", o, o + DAY, 10.0, 11.0, amount=1.0, short=True, tag="nlsh_short")     # -1
+    s3 = trade("AAPL/USDT:USDT", o, o + DAY, 100.0, 103.0, amount=1.0, short=True, tag="nlsh_short")  # -3
+    s4 = trade("ODD/USDT:USDT", o, o + DAY, 5.0, 4.0, amount=1.0, short=True, tag="nlsh_short")       # +1
+    h1 = trade("BTC/USDT:USDT", o, o + DAY, 100.0, 101.5, amount=1.0, tag="hedge")                     # +1.5
+    parts = dict(rc.split_by_category([s1, s3, h1, s2, s4], cats))
+    check("拆开：加密币 2 笔 +1（PF 2）、股票 1 笔 -3、不在文件里的 1 笔、对冲腿单独一组（BTC 不算加密币那组）",
+          [list(parts), parts["加密币"]["trades"], parts["加密币"]["net"], parts["加密币"]["pf"], parts["股票"]["net"],
+           parts[rc.UNKNOWN_CN]["trades"], parts[rc.HEDGE_CN]["net"]],
+          [["加密币", "股票", rc.UNKNOWN_CN, rc.HEDGE_CN], 2, 1.0, 2.0, -3.0, 1, 1.5])
+    check("拆开：胜率按组算（加密币 1/2）、各组相加 = 合计",
+          [parts["加密币"]["win_rate"], round(sum(v["net"] for v in parts.values()), 9)], [0.5, 0.5])
+    tr = rc.collect_trades(run_dir, ["OldTrend"])
+    cl = rc.render_categories(tr, cats, csv_p)
+    ok("按分类的表格能画出来（假研究目录：币不在分类文件里 → \"分类文件里没有\"）",
+       any("按合约分类拆开" in x for x in cl) and any(rc.UNKNOWN_CN in x for x in cl))
+
+
+# ----------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
@@ -853,6 +929,7 @@ def main(argv: list[str] | None = None) -> int:
         test_pre_holdout(tmp)
         test_end_to_end(tmp)
         test_run_dirs(tmp)
+        test_costs(tmp)
     print()
     if FAILS:
         print(f"不通过：有 {len(FAILS)} / {COUNT} 项不对：")
