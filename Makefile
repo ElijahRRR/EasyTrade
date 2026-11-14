@@ -93,6 +93,14 @@ okx-funding-status:  ## 运行 C：看 user_data/data/okx-funding 的资金费�
 okx-funding-check:  ## 只跑资金费归档导入的自检（假的 HTTP 层 + 合成数据的端到端回测，不联网，约半分钟；make guard-test 里也有；ARGS="--no-e2e" 只要几秒）
 	@source scripts/_common.sh; py_ft scripts/check_okx_funding_archive.py $(ARGS)
 
+# ---------- 第 6 轮：100 个候选策略快速初筛（docs/screen100.md） ----------
+.PHONY: screen100 screen100-selftest
+screen100:  ## 第 6 轮：100 个候选策略快速初筛（向量化，用已下载的 OKX 1d/4h 数据，几分钟；训练段挑参数 → 样本外 + 走步 + 多重检验；ARGS="--only 'T01 X01'" 只跑几个、不算正式）
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py $(ARGS)
+
+screen100-selftest:  ## 第 6 轮初筛自检（合成数据，不联网，约 1 分钟）：纯随机行情应当 0 个通过，植入截面动量应当抓到
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py --self-test $(ARGS)
+
 research-benchmarks:  ## 基准策略研究：别人公开的策略（freqtrade-strategies、NFI）用同一套流程比较，只用默认参数（先 bash scripts/fetch_benchmarks.sh；见 docs/benchmarks.md）
 	bash scripts/research_benchmarks.sh $(ARGS)
 

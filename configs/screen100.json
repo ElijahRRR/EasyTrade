@@ -1,0 +1,40 @@
+{
+  "_说明": "第 6 轮 100 个候选策略初筛（scripts/screen100/run.py，docs/screen100.md）。第一次真实运行之前锁定：参数网格在 catalog.py，门槛在这里，代码 sha256 在 locked_sha256。正式运行以后不能为了让某个策略通过而改这里。",
+  "datadir": "user_data/data/okx",
+  "pairs_file": "configs/pairs.okx-research.json",
+  "funding_dir": "user_data/data/okx-funding",
+  "start": "2021-01-01",
+  "warmup_days": 420,
+  "wf_folds": 6,
+  "wf_train_days": 365,
+  "wf_test_days": 180,
+  "stress_fee_mult": 2.0,
+  "settings": {
+    "fee": 0.0007,
+    "gross_max": 1.0,
+    "pos_cap": 0.25,
+    "target_daily_vol": 0.004,
+    "vol_span_days": 30,
+    "xs_quantile": 0.2,
+    "xs_min_side": 2,
+    "xs_min_names": 8,
+    "min_history_days": 60,
+    "heat_max": 0.024
+  },
+  "gate": {
+    "max_dd": 0.15,
+    "min_pf": 1.2,
+    "min_pf_neutral": 1.1,
+    "min_trades": 30,
+    "pf_ratio": 0.6,
+    "min_dsr": 0.95,
+    "trials": "effective"
+  },
+  "locked_sha256": {
+    "scripts/screen100/catalog.py": "a7471f54ff066f4d1dded977f65908ed946e1b0efefdbedfb875894c45828610",
+    "scripts/screen100/engine.py": "cd0bac7946e312de6934b90c2b87050448dbb31ea42a9bbc972a39a7aa433423",
+    "scripts/screen100/ind.py": "6c1ab6556cfa8bb5fc0e79fbecd6368e11d068999327469eae8c03fe3fe558c0",
+    "scripts/screen100/data.py": "a5d97da6ab15fd47f3af2f755637889650759c5154ea2f268d4ac275a64b227c",
+    "scripts/screen100/run.py": "7bb15e8b3497f286595bc227d12adbfeb357396fa3434574f4abad56cc67f419"
+  }
+}
