@@ -871,6 +871,17 @@ make screen100-selftest   # 合成数据自检，约 1 分钟，最后一行应�
 make screen100            # 用已经下载的 OKX 1d/4h 数据，几分钟；结果在 user_data/research/screen100/run_<时间>/
 ```
 
+### 第 6 轮复核：放宽规则后的 3 个突破类策略
+
+初筛 100 个里 0 个通过（[结果](docs/research-runs/2026-11-14-round6-screen100/README.md)）。David 2026-11-14 选了“放宽规则再看”：
+不再要求多重检验，回撤上限仍然 15%，仓位降到初筛的约 0.4 倍。只栽在回撤上的 3 个（T21 / T08 / T29）改写成 freqtrade 策略
+`DualThrustTrend`、`BollingerBreakout`、`ChandelierBreakout`，参数和门槛已经登记，每个只测一次。规则、风险和命令：
+[docs/round6-retest.md](docs/round6-retest.md)。
+
+```bash
+make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--strategies 'DualThrustTrend BollingerBreakout ChandelierBreakout' --no-download"
+```
+
 ## 用合成数据自检（不联网）
 
 在连不上交易所的机器上（或者改完配置/策略想快速确认"有没有改坏"），可以用**随机生成的合成行情**把整条流程跑一遍：

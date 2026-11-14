@@ -208,6 +208,100 @@
         "user_data/strategies/rust_port_common.py": "c6eb3746ccfc73478fd26ec433ae47258c243549f3b46be0d85f0ee7aac5de95",
         "configs/research-overrides/NewListingShortHedged.json": "31e21762e621027f1d6b3ec084ee66c3fe2b06a76b49d91ffdb628e1c7d580e4"
       }
+    },
+    "DualThrustTrend": {
+      "file": "user_data/strategies/DualThrustTrend.py",
+      "class": "DualThrustTrend",
+      "sha256": "f3c948b7d119765a390a597efc2e965ad7b6d7d3d1268ba095a7cd5fd7ca3f42",
+      "venue": "okx",
+      "stage": "1",
+      "config": "configs/config.okx-research.json",
+      "override": "configs/research-overrides/DualThrustTrend.json",
+      "timeframe": "1d",
+      "params": {
+        "range_period": 10,
+        "k_mult": 0.5,
+        "stop_atr_mult": 5.0,
+        "risk_per_trade": 0.01,
+        "max_portfolio_risk": 0.06,
+        "max_open_trades": 8
+      },
+      "min_pf": 1.2,
+      "extra_checks": [],
+      "run_settings": {
+        "pre_holdout": "20200101-20201231"
+      },
+      "round": 6,
+      "spec_doc": "docs/round6-retest.md",
+      "screen_id": "T21",
+      "note": "第 6 轮复核（docs/round6-retest.md，2026-11-14 David 选“放宽规则再看”）：初筛 T21 的 freqtrade 版，参数 = 初筛训练段选的那组，固定不调；不要求多重检验，其余门槛同默认（每一段：赚钱、回撤 ≤ 15%、PF ≥ 1.2、≥ 30 笔），外加 2020 留出段。看完 100 个初筛结果以后挑的，2021 ~ 2026 的结果不算独立证据。",
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "configs/research-overrides/DualThrustTrend.json": "294ae21c30327adb80e43cce1888455db9815f27fe7164bf96356ee1861ce096"
+      }
+    },
+    "BollingerBreakout": {
+      "file": "user_data/strategies/BollingerBreakout.py",
+      "class": "BollingerBreakout",
+      "sha256": "36f087ead081f65022b54a0c23314a7037d727f3e68fe9dfcf65a4fb7f14b041",
+      "venue": "okx",
+      "stage": "1",
+      "config": "configs/config.okx-research.json",
+      "override": "configs/research-overrides/BollingerBreakout.json",
+      "timeframe": "1d",
+      "params": {
+        "bb_period": 50,
+        "bb_mult": 2.0,
+        "stop_atr_mult": 5.0,
+        "risk_per_trade": 0.01,
+        "max_portfolio_risk": 0.06,
+        "max_open_trades": 8
+      },
+      "min_pf": 1.2,
+      "extra_checks": [],
+      "run_settings": {
+        "pre_holdout": "20200101-20201231"
+      },
+      "round": 6,
+      "spec_doc": "docs/round6-retest.md",
+      "screen_id": "T08",
+      "note": "第 6 轮复核（docs/round6-retest.md，2026-11-14 David 选“放宽规则再看”）：初筛 T08 的 freqtrade 版，参数 = 初筛训练段选的那组，固定不调；不要求多重检验，其余门槛同默认（每一段：赚钱、回撤 ≤ 15%、PF ≥ 1.2、≥ 30 笔），外加 2020 留出段。看完 100 个初筛结果以后挑的，2021 ~ 2026 的结果不算独立证据。",
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "configs/research-overrides/BollingerBreakout.json": "98b0d933ac42d70f093b09e27c66c1d70e2b104627475b8ee6531ca6c8514ea0"
+      }
+    },
+    "ChandelierBreakout": {
+      "file": "user_data/strategies/ChandelierBreakout.py",
+      "class": "ChandelierBreakout",
+      "sha256": "1dda2f906fb7793463d29c4077e94a482e32cf4430ec260229540dd49c07e003",
+      "venue": "okx",
+      "stage": "1",
+      "config": "configs/config.okx-research.json",
+      "override": "configs/research-overrides/ChandelierBreakout.json",
+      "timeframe": "1d",
+      "params": {
+        "breakout_period": 50,
+        "trail_mult": 3.0,
+        "trail_atr_period": 22,
+        "stop_atr_mult": 5.0,
+        "risk_per_trade": 0.01,
+        "max_portfolio_risk": 0.06,
+        "max_open_trades": 8
+      },
+      "min_pf": 1.2,
+      "extra_checks": [],
+      "run_settings": {
+        "pre_holdout": "20200101-20201231"
+      },
+      "round": 6,
+      "spec_doc": "docs/round6-retest.md",
+      "screen_id": "T29",
+      "note": "第 6 轮复核（docs/round6-retest.md，2026-11-14 David 选“放宽规则再看”）：初筛 T29 的 freqtrade 版，参数 = 初筛训练段选的那组，固定不调；不要求多重检验，其余门槛同默认（每一段：赚钱、回撤 ≤ 15%、PF ≥ 1.2、≥ 30 笔），外加 2020 留出段。看完 100 个初筛结果以后挑的，2021 ~ 2026 的结果不算独立证据。",
+      "pinned_files": {
+        "user_data/strategies/easytrade_risk.py": "fb4a532a1af3f8d50f8eef7860eccc034724c6047c5d9ccb5ec5396535b1b93e",
+        "configs/research-overrides/ChandelierBreakout.json": "26aa83d26df2781c93c387e3ad66a0b4c78f7c8780757e410cd71dba84dc66ea"
+      }
     }
   },
   "changes": [],
