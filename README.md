@@ -12,7 +12,9 @@
 > [`docs/forward-monitoring.md`](docs/forward-monitoring.md)，见下面「第 4 步：NFI 按年回测和模拟盘」。
 > 第 5 轮（4 个和趋势无关的新机制，规格冻结、每个只测一次）：[`docs/round5-preregistration.md`](docs/round5-preregistration.md)，见下面「第 5 步：新策略类型（预注册，只测一次）」。
 > 第 5 轮运行 C 结果（XSFundingCarry 未通过，走步盈亏因子 1.07 < 1.1）：[`docs/research-runs/2026-11-09-round5-runC/`](docs/research-runs/2026-11-09-round5-runC/README.md)；
-> 运行 A 结果（PremiumFade、CapitulationRebound 都未通过，每一段都亏）：[`docs/research-runs/2026-11-10-round5-runA/`](docs/research-runs/2026-11-10-round5-runA/README.md)。
+> 运行 A 结果（PremiumFade、CapitulationRebound 都未通过，每一段都亏）：[`docs/research-runs/2026-11-10-round5-runA/`](docs/research-runs/2026-11-10-round5-runA/README.md)；
+> 运行 B 结果（NewListingShortHedged 未通过，训练段和 2021 ~ 2023 都亏）：[`docs/research-runs/2026-11-13-round5-runB/`](docs/research-runs/2026-11-13-round5-runB/README.md)。
+> **第 5 轮 4 个策略全部未通过**：按预注册 3.5 节第 5 条，暂时没有找到可靠、能自动交易的优势，钱留作现金（或者只跑模拟盘）更安全。
 
 ---
 
@@ -596,9 +598,13 @@ freqtrade 自己的 MaxDrawdown 保护只看已平仓的交易；项目硬规则
 >
 > **2026-11-09 运行 C 已经正式跑过：XSFundingCarry 未通过**（走步盈亏因子 1.07 < 1.1，其他都过了；资金费只占利润约两成）。不补救、不重跑。结果和诊断：[`docs/research-runs/2026-11-09-round5-runC/`](docs/research-runs/2026-11-09-round5-runC/README.md)。
 >
-> **2026-11-10 运行 A 已经正式跑过：PremiumFade、CapitulationRebound 都未通过**（每一段都亏钱）。结果和诊断：[`docs/research-runs/2026-11-10-round5-runA/`](docs/research-runs/2026-11-10-round5-runA/README.md)。还没跑的是运行 B。
+> **2026-11-10 运行 A 已经正式跑过：PremiumFade、CapitulationRebound 都未通过**（每一段都亏钱）。结果和诊断：[`docs/research-runs/2026-11-10-round5-runA/`](docs/research-runs/2026-11-10-round5-runA/README.md)。
+>
+> **2026-11-13 运行 B 已经正式跑过：NewListingShortHedged 未通过**（训练段 -4.65%、2021 ~ 2023 -3.26%，走步盈亏因子 1.11 < 1.2）。结果和诊断：[`docs/research-runs/2026-11-13-round5-runB/`](docs/research-runs/2026-11-13-round5-runB/README.md)。
+> **第 5 轮 4 个策略全部未通过**（预注册 3.5 节第 5 条：暂时没有找到可靠、能自动交易的优势）。
 >
 > 成本诊断（只读、不改判定）：`.venv/bin/python scripts/research_costs.py --run-dir user_data/research/run_<时间>`，每个策略、每一段逐笔算手续费+滑点、资金费、扣成本前收益和扣成本前盈亏因子（预注册 3.5 节第 2 条"成本占毛利多少"）。
+> 加 `--categories <合约分类.csv>` 另外按合约分类（加密币、股票、ETF/ETP、商品……，对冲腿单独一行）拆开，例如运行 B 用 `docs/research-runs/2026-11-13-round5-runB/okx-swap-categories-20261113.csv`。
 
 | 策略（文件在 `user_data/strategies/`） | 机制 | 周期 / 方向 | 在哪测 | 研究配置 + 自己的研究设置 | 第 2 节里自己的"算失败" |
 |---|---|---|---|---|---|
@@ -713,6 +719,7 @@ make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--strategies 'Premium
 ### 4. 运行 B（美国 VPS，OKX 全部 USDT 永续）：NewListingShortHedged（第一阶段）
 
 ```bash
+# 2026-11-13 已经正式跑过（未通过，见上面第 5 步开头的说明）：同样的命令再跑只算"重复运行"
 RESEARCH_MIN_TRAIN_DAYS=0 RESEARCH_WARMUP_CANDLES=0 RESEARCH_KEEP_DELISTED=1 \
   make research ARGS="--config configs/config.okx-research-listings.json --strategies NewListingShortHedged"
 ```
@@ -838,7 +845,7 @@ make research ARGS="--config configs/config.okx-research-funding.json --strategi
 
 ### 8. 组合检查（3.4 节：几次运行合在一起）
 
-只放**通过**的策略（默认挑选只看训练段，可能挑到"无效 / 测不了"的，所以一定用 `--strategies` 写明）。XSFundingCarry 在运行 C 未通过（2026-11-09），不进组合；下面的命令只是写法示例。2026-11-08 起三次运行都在美国 VPS 上、都是 OKX 数据，
+只放**通过**的策略（默认挑选只看训练段，可能挑到"无效 / 测不了"的，所以一定用 `--strategies` 写明）。第 5 轮 4 个策略全部未通过（运行 C 2026-11-09、运行 A 2026-11-10、运行 B 2026-11-13），都不进组合；下面的命令只是写法示例。2026-11-08 起三次运行都在美国 VPS 上、都是 OKX 数据，
 XSFundingCarry 的资金曲线来自运行 C 那个结果目录：
 
 ```bash

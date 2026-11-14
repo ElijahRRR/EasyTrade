@@ -4,6 +4,10 @@
 用法（VPS 上，研究跑完以后）：
   .venv/bin/python scripts/research_costs.py --run-dir user_data/research/run_<时间>
   .venv/bin/python scripts/research_costs.py --run-dir user_data/research/run_<时间> --strategies "PremiumFade"
+  .venv/bin/python scripts/research_costs.py --run-dir user_data/research/run_<时间> --categories <合约分类.csv>
+      # 另外按合约分类拆开（2026-11-14 加，给运行 B 用）：加密币、股票、ETF/ETP、商品……各算一行，对冲腿（enter_tag = hedge）单独一行。
+      # 分类文件：CSV，列 freqtrade_pair + diagnostic_category（没有这列就用 OKX 的 instCategory），
+      # 例如 docs/research-runs/2026-11-13-round5-runB/okx-swap-categories-20261113.csv
 
 每个策略、每一段（默认参数；训练段、没看过的一段、样本外、走步各折和合计、2020 留出段）逐笔算：
   成本   = 开仓名义金额（amount × open_rate）× fee_open + 平仓名义金额（amount × close_rate）× fee_close
@@ -18,6 +22,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import sys
@@ -33,6 +38,14 @@ import research_report as rr  # noqa: E402
 
 SEG_ORDER = ["train", "holdout", "test"] + [f"wf{i}" for i in range(1, 21)] + ["preholdout"]
 SEG_CN = {"train": "训练段", "holdout": "没看过的一段", "test": "样本外", "preholdout": "研究开始前的留出段", "wf": "走步合计"}
+
+
+# 分类文件里的类别 → 中文（OKX instCategory：1 加密货币、3 股票、4 商品）
+CAT_CN = {"crypto": "加密币", "stock": "股票", "etf_etp": "ETF/ETP", "index": "指数", "commodity": "商品",
+          "pre_ipo_equity": "未上市公司", "stock_related_unverified": "股票类（待核实）", "1": "加密币", "3": "股票", "4": "商品"}
+HEDGE_TAG = "hedge"
+HEDGE_CN = "对冲腿（BTC 多单）"
+UNKNOWN_CN = "分类文件里没有"
 
 
 def seg_name(seg: str) -> str:
@@ -81,27 +94,85 @@ def summarize(trades: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def collect(run_dir: Path, strategies: list[str] | None) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+def collect_trades(run_dir: Path, strategies: list[str] | None) -> dict[str, list[tuple[str, list[dict[str, Any]]]]]:
+    """每个策略、每一段（默认参数）的逐笔交易；走步各折之后加一段 "wf" = 各折合在一起（放在 2020 留出段前面）。"""
     plan = rr.load_plan(run_dir)
     jobs = rr.load_jobs(run_dir)
     names = strategies or list(dict.fromkeys(j["strategy"] for j in jobs))
-    out: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    out: dict[str, list[tuple[str, list[dict[str, Any]]]]] = {}
     for name in names:
         segs = [j["segment"] for j in jobs if j["strategy"] == name and j["variant"] == "default" and j["status"] == "ok"]
         segs = sorted(set(segs), key=lambda s: (SEG_ORDER.index(s) if s in SEG_ORDER else len(SEG_ORDER), s))
-        rows: list[tuple[str, dict[str, Any]]] = []
+        rows: list[tuple[str, list[dict[str, Any]]]] = []
         wf_trades: list[dict[str, Any]] = []
         for seg in segs:
-            r = rr.eval_job(plan, jobs, name, "default", seg)
-            trades = rr._trades_of(r)
+            trades = rr._trades_of(rr.eval_job(plan, jobs, name, "default", seg))
             if seg.startswith("wf"):
                 wf_trades += trades
-            rows.append((seg, summarize(trades)))
+            rows.append((seg, trades))
         if wf_trades:
             idx = next((i for i, (s, _) in enumerate(rows) if s == "preholdout"), len(rows))
-            rows.insert(idx, ("wf", summarize(wf_trades)))
+            rows.insert(idx, ("wf", wf_trades))
         out[name] = rows
     return out
+
+
+def collect(run_dir: Path, strategies: list[str] | None) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    return {name: [(seg, summarize(tr)) for seg, tr in rows] for name, rows in collect_trades(run_dir, strategies).items()}
+
+
+def load_categories(path: Path) -> dict[str, str]:
+    """分类 CSV → {freqtrade_pair: 中文类别}。用 diagnostic_category 列，没有就用 instCategory。格式不对 → ValueError。"""
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            rows = list(csv.DictReader(fh))
+    except OSError as exc:
+        raise ValueError(f"读不了分类文件 {path}：{exc}") from None
+    if not rows or "freqtrade_pair" not in rows[0]:
+        raise ValueError(f"分类文件 {path} 要有 freqtrade_pair 列（和 diagnostic_category 或 instCategory 列）")
+    col = "diagnostic_category" if "diagnostic_category" in rows[0] else "instCategory"
+    if col not in rows[0]:
+        raise ValueError(f"分类文件 {path} 没有 diagnostic_category 或 instCategory 列")
+    out = {}
+    for r in rows:
+        pair = (r.get("freqtrade_pair") or "").strip()
+        cat = (r.get(col) or "").strip()
+        if pair:
+            out[pair] = CAT_CN.get(cat, cat or UNKNOWN_CN)
+    return out
+
+
+def split_by_category(trades: list[dict[str, Any]], cats: dict[str, str]) -> list[tuple[str, dict[str, Any]]]:
+    """按类别分组再汇总；对冲腿（enter_tag = hedge）单独一组。顺序：加密币、其他类别（按交易数从多到少）、没分类的、对冲腿。"""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for t in trades:
+        key = HEDGE_CN if str(t.get("enter_tag") or "") == HEDGE_TAG else cats.get(str(t.get("pair")), UNKNOWN_CN)
+        groups.setdefault(key, []).append(t)
+    first = [k for k in ("加密币",) if k in groups]
+    last = [k for k in (UNKNOWN_CN, HEDGE_CN) if k in groups]
+    mid = sorted((k for k in groups if k not in first + last), key=lambda k: (-len(groups[k]), k))
+    out = []
+    for k in first + mid + last:
+        s = summarize(groups[k])
+        s["win_rate"] = sum(1 for t in groups[k] if _f(t.get("profit_abs")) > 0) / len(groups[k])
+        out.append((k, s))
+    return out
+
+
+def render_categories(data: dict[str, list[tuple[str, list[dict[str, Any]]]]], cats: dict[str, str], src: Path) -> list[str]:
+    lines = ["", f"按合约分类拆开（分类文件 {src}；单位 USDT；同一段里各组相加 = 上表这一段；只用来设计下一轮，不改变判定）："]
+    headers = [("策略", False), ("段", False), ("分类", False), ("交易", True), ("胜率", True), ("净收益", True),
+               ("成本", True), ("资金费", True), ("扣成本前", True), ("净 PF", True), ("扣成本前 PF", True)]
+    body = []
+    for name, rows in data.items():
+        for seg, trades in rows:
+            for cat, s in split_by_category(trades, cats):
+                body.append([name, seg_name(seg), cat, str(s["trades"]), rr._pct(s["win_rate"]), f"{s['net']:+.1f}",
+                             rr._num(s["cost"], 1), f"{s['funding']:+.1f}", f"{s['pre_cost']:+.1f}",
+                             rr._num(s["pf"]), rr._num(s["pf_pre_cost"])])
+    lines += rr._text_table(headers, body)
+    lines.append("  对冲腿 = enter_tag 为 hedge 的交易（NewListingShortHedged 的 BTC 多单）；\"分类文件里没有\" = 这个币不在分类文件里。")
+    return lines
 
 
 def render(data: dict[str, list[tuple[str, dict[str, Any]]]], run_dir: Path) -> list[str]:
@@ -131,17 +202,28 @@ def main() -> int:
     ap.add_argument("--run-dir", required=True, help="研究结果目录 user_data/research/run_<时间>")
     ap.add_argument("--strategies", default="", help="只看这几个策略（空格或逗号分隔；默认全部）")
     ap.add_argument("--json", default="", help="另外写一份 JSON（可选）")
+    ap.add_argument("--categories", default="", help="合约分类 CSV（freqtrade_pair + diagnostic_category / instCategory）：另外按分类拆开")
     a = ap.parse_args()
     run_dir = Path(a.run_dir)
     if not (run_dir / "plan.json").is_file() or not (run_dir / "jobs.tsv").is_file():
         print(f"参数错误：{run_dir} 不是研究结果目录（没有 plan.json / jobs.tsv）", file=sys.stderr)
         return 2
     names = [x for x in a.strategies.replace(",", " ").split() if x] or None
-    data = collect(run_dir, names)
+    cats: dict[str, str] | None = None
+    if a.categories:
+        try:
+            cats = load_categories(Path(a.categories))
+        except ValueError as exc:
+            print(f"参数错误：{exc}", file=sys.stderr)
+            return 2
+    trades = collect_trades(run_dir, names)
+    data = {name: [(seg, summarize(tr)) for seg, tr in rows] for name, rows in trades.items()}
     if not any(data.values()):
         print("没有找到回测结果（jobs.tsv 里没有状态 ok 的默认参数回测）", file=sys.stderr)
         return 3
     print("\n".join(render(data, run_dir)))
+    if cats is not None:
+        print("\n".join(render_categories(trades, cats, Path(a.categories))))
     if a.json:
         Path(a.json).write_text(json.dumps({k: [{"segment": s, **v} for s, v in rows] for k, rows in data.items()},
                                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -1,0 +1,6 @@
+bash scripts/round5_week_check.sh --strategy NewListingShortHedged --config configs/config.okx-research-listings.json
+第 5 轮管道检查（一周小窗口，只数笔数和资金费是否非零，不看收益）：NewListingShortHedged，20261101-20261108
+  配置：configs/config.okx-research-listings.json + configs/research-overrides/NewListingShortHedged.json
+  交易 3 笔（按 enter_tag：hedge 1、nlsh_short 2），有交易的币 3 个
+  funding_fees 不为 0 的交易：3/3（100%）
+  （收益没有打印；完整日志和结果在 user_data/backtest_results/round5_week/NewListingShortHedged_20261110_115619）

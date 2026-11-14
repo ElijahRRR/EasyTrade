@@ -1,0 +1,529 @@
+﻿freqtrade_pair,instId,instCategory,diagnostic_category,underlying_name,classification_source,listTime,list_time_utc,state,ruleType,snapshot_utc
+0G/USDT:USDT,0G-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758537000238,2025-09-22T10:30:00.238000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+1INCH/USDT:USDT,1INCH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1608863400000,2020-12-25T02:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+2Z/USDT:USDT,2Z-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1759410600649,2025-10-02T13:10:00.649000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+A/USDT:USDT,A-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1748514600412,2025-05-29T10:30:00.412000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AAOI/USDT:USDT,AAOI-USDT-SWAP,3,stock,"Applied Optoelectronics, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779786000000,2026-05-26T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AAPL/USDT:USDT,AAPL-USDT-SWAP,3,stock,Apple Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772612100000,2026-03-04T08:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AAVE/USDT:USDT,AAVE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1607580000000,2020-12-10T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ABBV/USDT:USDT,ABBV-USDT-SWAP,3,stock,AbbVie Inc. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792660500000,2026-10-22T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ACH/USDT:USDT,ACH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1708590301084,2024-02-22T08:25:01.084000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ACN/USDT:USDT,ACN-USDT-SWAP,3,stock,Accenture plc Class A Ordinary Shares (Ireland),https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790934300000,2026-10-02T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ACT/USDT:USDT,ACT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1731582000644,2024-11-14T11:00:00.644000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ACU/USDT:USDT,ACU-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1769151600000,2026-01-23T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ADA/USDT:USDT,ADA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1582888608000,2020-02-28T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ADBE/USDT:USDT,ADBE-USDT-SWAP,3,stock,Adobe Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780479000000,2026-06-03T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ADI/USDT:USDT,ADI-USDT-SWAP,3,stock,"Analog Devices, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793619000000,2026-11-02T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AEHR/USDT:USDT,AEHR-USDT-SWAP,3,stock,Aehr Test Systems - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1785143700000,2026-07-27T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AEON/USDT:USDT,AEON-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1785151800000,2026-07-27T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AERO/USDT:USDT,AERO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1751523300260,2025-07-03T06:15:00.260000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AEVO/USDT:USDT,AEVO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1710325520298,2024-03-13T10:25:20.298000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AGLD/USDT:USDT,AGLD-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1631008650016,2021-09-07T09:57:30.016000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AI/USDT:USDT,AI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1777464000000,2026-04-29T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AIXBT/USDT:USDT,AIXBT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1735887600188,2025-01-03T07:00:00.188000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AKE/USDT:USDT,AKE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1789542000000,2026-09-16T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ALAB/USDT:USDT,ALAB-USDT-SWAP,3,stock,"Astera Labs, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781600400000,2026-06-16T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ALGO/USDT:USDT,ALGO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ALLO/USDT:USDT,ALLO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762879500659,2025-11-11T16:45:00.659000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AMAT/USDT:USDT,AMAT-USDT-SWAP,3,stock,"Applied Materials, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779958800000,2026-05-28T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AMC/USDT:USDT,AMC-USDT-SWAP,3,stock,"AMC Entertainment Holdings, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1788511500000,2026-09-04T08:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AMD/USDT:USDT,AMD-USDT-SWAP,3,stock,"Advanced Micro Devices, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AMGN/USDT:USDT,AMGN-USDT-SWAP,3,stock,Amgen Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1792661400000,2026-10-22T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AMZN/USDT:USDT,AMZN-USDT-SWAP,3,stock,"Amazon.com, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772091000000,2026-02-26T07:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ANIME/USDT:USDT,ANIME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1737644401356,2025-01-23T15:00:01.356000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ANTHROPIC/USDT:USDT,ANTHROPIC-USDT-SWAP,3,pre_ipo_equity,Anthropic,https://www.okx.com/en-gb/help/okx-to-list-pre-ipo-pre-market-perpetual-futures-for-spacex-usdt-openai-usdt-and-anthropic-usdt,1778146200000,2026-05-07T09:30:00+00:00,live,pre_market,2026-11-13T16:00:30.323636+00:00
+APE/USDT:USDT,APE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1647522059555,2022-03-17T13:00:59.555000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+API3/USDT:USDT,API3-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1646297716213,2022-03-03T08:55:16.213000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+APLD/USDT:USDT,APLD-USDT-SWAP,3,stock,Applied Digital Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783330200000,2026-07-06T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+APP/USDT:USDT,APP-USDT-SWAP,3,stock,Applovin Corporation - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1784288700000,2026-07-17T11:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+APR/USDT:USDT,APR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761285601180,2025-10-24T06:00:01.180000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+APT/USDT:USDT,APT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1666142328522,2022-10-19T01:18:48.522000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AR/USDT:USDT,AR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1676357700186,2023-02-14T06:55:00.186000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ARB/USDT:USDT,ARB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1679580094937,2023-03-23T14:01:34.937000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ARKM/USDT:USDT,ARKM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1732177800122,2024-11-21T08:30:00.122000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ARM/USDT:USDT,ARM-USDT-SWAP,3,stock,Arm Holdings plc - American Depositary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1777443300000,2026-04-29T06:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ARX/USDT:USDT,ARX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1782131400000,2026-06-22T12:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ASML/USDT:USDT,ASML-USDT-SWAP,3,stock,ASML Holding N.V. - New York Registry Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780479900000,2026-06-03T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ASTER/USDT:USDT,ASTER-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758517200313,2025-09-22T05:00:00.313000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ASTS/USDT:USDT,ASTS-USDT-SWAP,3,stock,"AST SpaceMobile, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780398900000,2026-06-02T11:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AT/USDT:USDT,AT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761818401453,2025-10-30T10:00:01.453000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ATH/USDT:USDT,ATH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1718250900308,2024-06-13T03:55:00.308000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ATOM/USDT:USDT,ATOM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AUCTION/USDT:USDT,AUCTION-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1701417300613,2023-12-01T07:55:00.613000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AVAX/USDT:USDT,AVAX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1600840800000,2020-09-23T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AVGO/USDT:USDT,AVGO-USDT-SWAP,3,stock,Broadcom Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1777442400000,2026-04-29T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AVNT/USDT:USDT,AVNT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758555000222,2025-09-22T15:30:00.222000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AXIS/USDT:USDT,AXIS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1792591200000,2026-10-21T14:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AXS/USDT:USDT,AXS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1627462800000,2021-07-28T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AXTI/USDT:USDT,AXTI-USDT-SWAP,3,stock,AXT Inc - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781602200000,2026-06-16T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+AZTEC/USDT:USDT,AZTEC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1770805800000,2026-02-11T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BABY/USDT:USDT,BABY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1744282800387,2025-04-10T11:00:00.387000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BAC/USDT:USDT,BAC-USDT-SWAP,3,stock,Bank of America Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793096100000,2026-10-27T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BAND/USDT:USDT,BAND-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599473571000,2020-09-07T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BARD/USDT:USDT,BARD-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758196800496,2025-09-18T12:00:00.496000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BASED/USDT:USDT,BASED-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1774866600000,2026-03-30T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BAT/USDT:USDT,BAT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1598609571000,2020-08-28T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BB/USDT:USDT,BB-USDT-SWAP,3,stock,BlackBerry Limited Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1780304400000,2026-06-01T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BCH/USDT:USDT,BCH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BE/USDT:USDT,BE-USDT-SWAP,3,stock,Bloom Energy Corporation Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779879600000,2026-05-27T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BEAT/USDT:USDT,BEAT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762964100610,2025-11-12T16:15:00.610000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BERA/USDT:USDT,BERA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1738850401850,2025-02-06T14:00:01.850000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BICO/USDT:USDT,BICO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1639032617371,2021-12-09T06:50:17.371000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BIDU/USDT:USDT,BIDU-USDT-SWAP,3,stock,"Baidu, Inc. - American Depositary Shares, each representing 8 ordinary share",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793349900000,2026-10-30T08:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BIGTIME/USDT:USDT,BIGTIME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1697115300862,2023-10-12T12:55:00.862000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BILL/USDT:USDT,BILL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1778054400000,2026-05-06T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BIO/USDT:USDT,BIO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1735901100474,2025-01-03T10:45:00.474000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BLEND/USDT:USDT,BLEND-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1777456800000,2026-04-29T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BLUR/USDT:USDT,BLUR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1676429700181,2023-02-15T02:55:00.181000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BMNR/USDT:USDT,BMNR-USDT-SWAP,3,stock,"BitMine Immersion Technologies, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1777302000000,2026-04-27T15:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BNB/USDT:USDT,BNB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1671778428049,2022-12-23T06:53:48.049000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BOME/USDT:USDT,BOME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1723717202042,2024-08-15T10:20:02.042000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BONK/USDT:USDT,BONK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1704695217299,2024-01-08T06:26:57.299000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BOT/USDT:USDT,BOT-USDT-SWAP,3,stock,"RoboStrategy, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782986400000,2026-07-02T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BRETT/USDT:USDT,BRETT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1725617701730,2024-09-06T10:15:01.730000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BREV/USDT:USDT,BREV-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1767099600000,2025-12-30T13:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BRKB/USDT:USDT,BRKB-USDT-SWAP,3,stock,Berkshire Hathaway Class B,https://www.okx.com/en-br/help/okx-to-list-perpetual-futures-for-brkb-shop-and-jp225-equities,1786014900000,2026-08-06T11:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BSB/USDT:USDT,BSB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1775124000000,2026-04-02T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BSP/USDT:USDT,BSP-USDT-SWAP,3,stock,Bending Spoons S.p.A. - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783328400000,2026-07-06T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BTC/USDT:USDT,BTC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BTW/USDT:USDT,BTW-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1792656000000,2026-10-22T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BWET/USDT:USDT,BWET-USDT-SWAP,3,etf_etp,Breakwave Tanker Shipping ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790936100000,2026-10-02T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BX/USDT:USDT,BX-USDT-SWAP,3,stock,Blackstone Inc. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781255700000,2026-06-12T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+BZ/USDT:USDT,BZ-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1774346400000,2026-03-24T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CAP/USDT:USDT,CAP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1782477000000,2026-06-26T12:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CASHCAT/USDT:USDT,CASHCAT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788406200000,2026-09-03T03:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CBRS/USDT:USDT,CBRS-USDT-SWAP,3,stock,Cerebras Systems Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778824800000,2026-05-15T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CC/USDT:USDT,CC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761919200291,2025-10-31T14:00:00.291000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CEG/USDT:USDT,CEG-USDT-SWAP,3,stock,Constellation Energy Corporation - Common Stock When-Issued,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793095200000,2026-10-27T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CELO/USDT:USDT,CELO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1632477785202,2021-09-24T10:03:05.202000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CFX/USDT:USDT,CFX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1615539600000,2021-03-12T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CGNX/USDT:USDT,CGNX-USDT-SWAP,3,stock,Cognex Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781257500000,2026-06-12T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CHIP/USDT:USDT,CHIP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1776780000000,2026-04-21T14:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CHZ/USDT:USDT,CHZ-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1615539600000,2021-03-12T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CIEN/USDT:USDT,CIEN-USDT-SWAP,3,stock,Ciena Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781169300000,2026-06-11T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CL/USDT:USDT,CL-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1772626500000,2026-03-04T12:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CNPY/USDT:USDT,CNPY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788786000000,2026-09-07T13:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+COAI/USDT:USDT,COAI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760538601123,2025-10-15T14:30:01.123000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+COHR/USDT:USDT,COHR-USDT-SWAP,3,stock,Coherent Corp. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778666400000,2026-05-13T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+COIN/USDT:USDT,COIN-USDT-SWAP,3,stock,"Coinbase Global, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772091900000,2026-02-26T07:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+COMP/USDT:USDT,COMP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CORE/USDT:USDT,CORE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1675864514708,2023-02-08T13:55:14.708000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+COST/USDT:USDT,COST-USDT-SWAP,3,stock,Costco Wholesale Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1777299300000,2026-04-27T14:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CP/USDT:USDT,CP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788363600000,2026-09-02T15:40:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRCL/USDT:USDT,CRCL-USDT-SWAP,3,stock,"Circle Internet Group, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1772092800000,2026-02-26T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRDO/USDT:USDT,CRDO-USDT-SWAP,3,stock,Credo Technology Group Holding Ltd - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781168400000,2026-06-11T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRM/USDT:USDT,CRM-USDT-SWAP,3,stock,"Salesforce, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1785402900000,2026-07-30T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRML/USDT:USDT,CRML-USDT-SWAP,3,stock,Critical Metals Corp. - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1792487700000,2026-10-20T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRO/USDT:USDT,CRO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1617872400000,2021-04-08T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRV/USDT:USDT,CRV-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599214371000,2020-09-04T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRWD/USDT:USDT,CRWD-USDT-SWAP,3,stock,"CrowdStrike Holdings, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779787800000,2026-05-26T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CRWV/USDT:USDT,CRWV-USDT-SWAP,3,stock,"CoreWeave, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1775822400000,2026-04-10T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CSCO/USDT:USDT,CSCO-USDT-SWAP,3,stock,"Cisco Systems, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779183900000,2026-05-19T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CSOPSAMSUNG2L/USDT:USDT,CSOPSAMSUNG2L-USDT-SWAP,3,etf_etp,CSOP Samsung Electronics Daily Max (2x) Leveraged Product,https://www.okx.com/en-eu/price/csop-samsung-2x-leveraged-product-csopsamsung2l,1788416100000,2026-09-03T06:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CSOPSKHYNIX2L/USDT:USDT,CSOPSKHYNIX2L-USDT-SWAP,3,etf_etp,CSOP SK Hynix Daily Max (2x) Leveraged Product,https://ifp.hkex.com.hk/fund/BWT200,1788415200000,2026-09-03T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CT/USDT:USDT,CT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1790766000000,2026-09-30T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CVNA/USDT:USDT,CVNA-USDT-SWAP,3,stock,Carvana Co. Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792488600000,2026-10-20T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CVX/USDT:USDT,CVX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1719303900750,2024-06-25T08:25:00.750000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CXMT/USDT:USDT,CXMT-USDT-SWAP,3,stock,ChangXin Memory Technologies,https://www.okx.com/en-us/help/okx-to-list-perpetual-futures-for-cxmt-equity,1787035500000,2026-08-18T06:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+CYPH/USDT:USDT,CYPH-USDT-SWAP,3,stock,Cypherpunk Technologies Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1790155800000,2026-09-23T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DASH/USDT:USDT,DASH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762398000994,2025-11-06T03:00:00.994000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DATA/USDT:USDT,DATA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1782995400000,2026-07-02T12:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DDOG/USDT:USDT,DDOG-USDT-SWAP,3,stock,"Datadog, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1788426900000,2026-09-03T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DELL/USDT:USDT,DELL-USDT-SWAP,3,stock,Dell Technologies Inc. Class C Common Stock ,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779959700000,2026-05-28T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DGAI/USDT:USDT,DGAI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788404400000,2026-09-03T03:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DKNG/USDT:USDT,DKNG-USDT-SWAP,3,stock,DraftKings Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781775900000,2026-06-18T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DNA/USDT:USDT,DNA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1792152000000,2026-10-16T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DOGE/USDT:USDT,DOGE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DOOD/USDT:USDT,DOOD-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1747051200521,2025-05-12T12:00:00.521000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DOS/USDT:USDT,DOS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1786363200000,2026-08-10T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DOT/USDT:USDT,DOT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1598350371000,2020-08-25T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DRAM/USDT:USDT,DRAM-USDT-SWAP,3,etf_etp,Roundhill Memory ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778230800000,2026-05-08T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+DYDX/USDT:USDT,DYDX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1631117510421,2021-09-08T16:11:50.421000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EDEN/USDT:USDT,EDEN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1759231801710,2025-09-30T11:30:01.710000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EDGE/USDT:USDT,EDGE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1775050200000,2026-04-01T13:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EGLD/USDT:USDT,EGLD-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1608620400000,2020-12-22T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EIDO/USDT:USDT,EIDO-USDT-SWAP,3,etf_etp,iShares MSCI Indonesia ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793956500000,2026-11-06T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EIGEN/USDT:USDT,EIGEN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1727764200682,2024-10-01T06:30:00.682000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ENA/USDT:USDT,ENA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758094200364,2025-09-17T07:30:00.364000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ENJ/USDT:USDT,ENJ-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1709288701407,2024-03-01T10:25:01.407000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ENS/USDT:USDT,ENS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1636623946265,2021-11-11T09:45:46.265000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ENSO/USDT:USDT,ENSO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761732001294,2025-10-29T10:00:01.294000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ESP/USDT:USDT,ESP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1770739200000,2026-02-10T16:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ETC/USDT:USDT,ETC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ETH/USDT:USDT,ETH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ETHFI/USDT:USDT,ETHFI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1710764700945,2024-03-18T12:25:00.945000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ETHW/USDT:USDT,ETHW-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1663311331635,2022-09-16T06:55:31.635000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EWJ/USDT:USDT,EWJ-USDT-SWAP,3,etf_etp,iShares MSCI Japan Index Fund,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EWT/USDT:USDT,EWT-USDT-SWAP,3,etf_etp,iShares MSCI Taiwan ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1780480800000,2026-06-03T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EWY/USDT:USDT,EWY-USDT-SWAP,3,etf_etp,iShares MSCI South Korea ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EWZ/USDT:USDT,EWZ-USDT-SWAP,3,etf_etp,iShares MSCI Brazil ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781774100000,2026-06-18T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+EWZS/USDT:USDT,EWZS-USDT-SWAP,3,etf_etp,iShares MSCI Brazil Small-Cap ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793957400000,2026-11-06T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+F/USDT:USDT,F-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761379201201,2025-10-25T08:00:01.201000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FARTCOIN/USDT:USDT,FARTCOIN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1734685200393,2024-12-20T09:00:00.393000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FET/USDT:USDT,FET-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788579000000,2026-09-05T03:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FIL/USDT:USDT,FIL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1565431971000,2019-08-10T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLEX/USDT:USDT,FLEX-USDT-SWAP,3,stock,Flex Ltd. - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793619900000,2026-11-02T11:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLNC/USDT:USDT,FLNC-USDT-SWAP,3,stock,"Fluence Energy, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781171100000,2026-06-11T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLOCK/USDT:USDT,FLOCK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1789207200000,2026-09-12T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLOKI/USDT:USDT,FLOKI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1676876100607,2023-02-20T06:55:00.607000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLOW/USDT:USDT,FLOW-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1699350900756,2023-11-07T09:55:00.756000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FLY/USDT:USDT,FLY-USDT-SWAP,3,stock,Firefly Aerospace Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1785144600000,2026-07-27T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FOGO/USDT:USDT,FOGO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1768059900000,2026-01-10T15:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+FWDI/USDT:USDT,FWDI-USDT-SWAP,3,stock,"Forward Industries, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1785142800000,2026-07-27T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GALA/USDT:USDT,GALA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1632477789599,2021-09-24T10:03:09.599000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GAS/USDT:USDT,GAS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1698141300695,2023-10-24T09:55:00.695000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GE/USDT:USDT,GE-USDT-SWAP,3,stock,GE Aerospace Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792658700000,2026-10-22T08:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GEV/USDT:USDT,GEV-USDT-SWAP,3,stock,GE Vernova Inc. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779354000000,2026-05-21T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GIGADEV/USDT:USDT,GIGADEV-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1793344500000,2026-10-30T07:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GIGGLE/USDT:USDT,GIGGLE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761375601708,2025-10-25T07:00:01.708000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GILD/USDT:USDT,GILD-USDT-SWAP,3,stock,"Gilead Sciences, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793350800000,2026-10-30T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GLM/USDT:USDT,GLM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1715329501418,2024-05-10T08:25:01.418000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GLW/USDT:USDT,GLW-USDT-SWAP,3,stock,Corning Incorporated Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779094800000,2026-05-18T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GME/USDT:USDT,GME-USDT-SWAP,3,stock,GameStop Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778232600000,2026-05-08T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GMT/USDT:USDT,GMT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1648803369890,2022-04-01T08:56:09.890000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GMX/USDT:USDT,GMX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1675321542847,2023-02-02T07:05:42.847000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GOOGL/USDT:USDT,GOOGL-USDT-SWAP,3,stock,Alphabet Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772610300000,2026-03-04T07:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GPRO/USDT:USDT,GPRO-USDT-SWAP,3,stock,"GoPro, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1788528900000,2026-09-04T13:35:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GPS/USDT:USDT,GPS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1741089600468,2025-03-04T12:00:00.468000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GRAM/USDT:USDT,GRAM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1781692200000,2026-06-17T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GRASS/USDT:USDT,GRASS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1730125800597,2024-10-28T14:30:00.597000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GRT/USDT:USDT,GRT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1608458400000,2020-12-20T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GRVT/USDT:USDT,GRVT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1785423600000,2026-07-30T15:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GS/USDT:USDT,GS-USDT-SWAP,3,stock,"Goldman Sachs Group, Inc. (The) Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792143900000,2026-10-16T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+GTLB/USDT:USDT,GTLB-USDT-SWAP,3,stock,GitLab Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1790156700000,2026-09-23T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+H/USDT:USDT,H-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1751522400413,2025-07-03T06:00:00.413000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+H100/USDT:USDT,H100-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1790933400000,2026-10-02T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HANMI/USDT:USDT,HANMI-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1789538400000,2026-09-16T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HBAR/USDT:USDT,HBAR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1692165300823,2023-08-16T05:55:00.823000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HIMS/USDT:USDT,HIMS-USDT-SWAP,3,stock,"Hims & Hers Health, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1777301100000,2026-04-27T14:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HMSTR/USDT:USDT,HMSTR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1727353800176,2024-09-26T12:30:00.176000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HOME/USDT:USDT,HOME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1749809700256,2025-06-13T10:15:00.256000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HOOD/USDT:USDT,HOOD-USDT-SWAP,3,stock,"Robinhood Markets, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772002800000,2026-02-25T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HPE/USDT:USDT,HPE-USDT-SWAP,3,stock,Hewlett Packard Enterprise Company Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1780398000000,2026-06-02T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HUMA/USDT:USDT,HUMA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1748266200433,2025-05-26T13:30:00.433000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HUT/USDT:USDT,HUT-USDT-SWAP,3,stock,Hut 8 Corp. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1789981200000,2026-09-21T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HYPE/USDT:USDT,HYPE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1740121200506,2025-02-21T07:00:00.506000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+HYUNDAI/USDT:USDT,HYUNDAI-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1781070900000,2026-06-10T05:55:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IBKR/USDT:USDT,IBKR-USDT-SWAP,3,stock,"Interactive Brokers Group, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793097000000,2026-10-27T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IBM/USDT:USDT,IBM-USDT-SWAP,3,stock,International Business Machines Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779877800000,2026-05-27T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ICP/USDT:USDT,ICP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1620982800000,2021-05-14T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IMX/USDT:USDT,IMX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1637218222034,2021-11-18T06:50:22.034000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+INFQ/USDT:USDT,INFQ-USDT-SWAP,3,stock,"Infleqtion, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779786900000,2026-05-26T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+INIT/USDT:USDT,INIT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1745494200437,2025-04-24T11:30:00.437000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+INJ/USDT:USDT,INJ-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1701345300667,2023-11-30T11:55:00.667000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+INTC/USDT:USDT,INTC-USDT-SWAP,3,stock,Intel Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772089200000,2026-02-26T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+INTW/USDT:USDT,INTW-USDT-SWAP,3,etf_etp,GraniteShares 2x Long INTC Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1785403800000,2026-07-30T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IONQ/USDT:USDT,IONQ-USDT-SWAP,3,stock,"IonQ, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1788427800000,2026-09-03T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IOST/USDT:USDT,IOST-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IOTA/USDT:USDT,IOTA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IREN/USDT:USDT,IREN-USDT-SWAP,3,stock,IREN Limited - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780910100000,2026-06-08T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IRYS/USDT:USDT,IRYS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1779880500000,2026-05-27T11:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ISRG/USDT:USDT,ISRG-USDT-SWAP,3,stock,"Intuitive Surgical, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781170200000,2026-06-11T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+IWM/USDT:USDT,IWM-USDT-SWAP,3,etf_etp,iShares Russell 2000 Index Fund,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1775822400000,2026-04-10T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JELLYJELLY/USDT:USDT,JELLYJELLY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1743004470352,2025-03-26T15:54:30.352000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JNJ/USDT:USDT,JNJ-USDT-SWAP,3,stock,Johnson & Johnson Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1783674900000,2026-07-10T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JP225/USDT:USDT,JP225-USDT-SWAP,3,index,,https://www.okx.com/en-ae/help/index-perpetuals,1788926400000,2026-09-09T04:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JPM/USDT:USDT,JPM-USDT-SWAP,3,stock,JP Morgan Chase & Co. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792142100000,2026-10-16T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JTO/USDT:USDT,JTO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1704696900623,2024-01-08T06:55:00.623000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+JUP/USDT:USDT,JUP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1706717100211,2024-01-31T16:05:00.211000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KAITO/USDT:USDT,KAITO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1740060000331,2025-02-20T14:00:00.331000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KAT/USDT:USDT,KAT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1772451000000,2026-03-02T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KGEN/USDT:USDT,KGEN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760761801014,2025-10-18T04:30:01.014000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KII/USDT:USDT,KII-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1790247600000,2026-09-24T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KIOXIA/USDT:USDT,KIOXIA-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1782437400000,2026-06-26T01:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KITE/USDT:USDT,KITE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1775703600000,2026-04-09T03:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KLAC/USDT:USDT,KLAC-USDT-SWAP,3,stock,KLA Corporation  - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782207900000,2026-06-23T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KMNO/USDT:USDT,KMNO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1748575800335,2025-05-30T03:30:00.335000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KO/USDT:USDT,KO-USDT-SWAP,3,stock,Coca-Cola Company (The) Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1786354200000,2026-08-10T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KORU/USDT:USDT,KORU-USDT-SWAP,3,etf_etp,Direxion Daily South Korea Bull 3X ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1782292500000,2026-06-24T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KR200/USDT:USDT,KR200-USDT-SWAP,3,index,South Korean equity benchmark,https://www.okx.com/en-ae/help/okx-to-list-perpetual-futures-for-kr200-equity,1785130200000,2026-07-27T05:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KSM/USDT:USDT,KSM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599559971000,2020-09-08T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+KSTR/USDT:USDT,KSTR-USDT-SWAP,3,etf_etp,KraneShares China Technology & Semiconductor STAR 50 Index ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790154900000,2026-09-23T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LA/USDT:USDT,LA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1749808800320,2025-06-13T10:00:00.320000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LAB/USDT:USDT,LAB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761998401879,2025-11-01T12:00:01.879000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LAYER/USDT:USDT,LAYER-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1739284200817,2025-02-11T14:30:00.817000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LDO/USDT:USDT,LDO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1675321369323,2023-02-02T07:02:49.323000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LGELECTRONICS/USDT:USDT,LGELECTRONICS-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1789536600000,2026-09-16T05:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LIGHT/USDT:USDT,LIGHT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1765872000000,2025-12-16T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LINEA/USDT:USDT,LINEA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1756735200376,2025-09-01T14:00:00.376000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LINK/USDT:USDT,LINK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1582888608000,2020-02-28T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LIT/USDT:USDT,LIT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1766547000000,2025-12-24T03:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LITE/USDT:USDT,LITE-USDT-SWAP,3,stock,Lumentum Holdings Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778231700000,2026-05-08T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LLY/USDT:USDT,LLY-USDT-SWAP,3,stock,Eli Lilly and Company Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1777300200000,2026-04-27T14:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LPT/USDT:USDT,LPT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1619161200000,2021-04-23T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LQTY/USDT:USDT,LQTY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1705053300717,2024-01-12T09:55:00.717000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LRCX/USDT:USDT,LRCX-USDT-SWAP,3,stock,Lam Research Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782208800000,2026-06-23T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LTC/USDT:USDT,LTC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LUNA/USDT:USDT,LUNA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1653746082125,2022-05-28T13:54:42.125000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LUNR/USDT:USDT,LUNR-USDT-SWAP,3,stock,"Intuitive Machines, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780306200000,2026-06-01T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+LYTE/USDT:USDT,LYTE-USDT-SWAP,3,etf_etp,Roundhill Photonics & Optics ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1786958100000,2026-08-17T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MAGIC/USDT:USDT,MAGIC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1675321549791,2023-02-02T07:05:49.791000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MANA/USDT:USDT,MANA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1615539600000,2021-03-12T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MARA/USDT:USDT,MARA-USDT-SWAP,3,stock,"MARA Holdings, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787824800000,2026-08-27T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MASK/USDT:USDT,MASK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1614841200000,2021-03-04T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MCD/USDT:USDT,MCD-USDT-SWAP,3,stock,McDonald's Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792141200000,2026-10-16T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ME/USDT:USDT,ME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1733844600107,2024-12-10T15:30:00.107000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MEGA/USDT:USDT,MEGA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1777550400000,2026-04-30T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MELI/USDT:USDT,MELI-USDT-SWAP,3,stock,"MercadoLibre, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793620800000,2026-11-02T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MEME/USDT:USDT,MEME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1699001700715,2023-11-03T08:55:00.715000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MERL/USDT:USDT,MERL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1713522300606,2024-04-19T10:25:00.606000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MET/USDT:USDT,MET-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760084100254,2025-10-10T08:15:00.254000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+META/USDT:USDT,META-USDT-SWAP,3,stock,"Meta Platforms, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772613000000,2026-03-04T08:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+METIS/USDT:USDT,METIS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1703757300614,2023-12-28T09:55:00.614000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MEW/USDT:USDT,MEW-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1713169500531,2024-04-15T08:25:00.531000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MINA/USDT:USDT,MINA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1623229200000,2021-06-09T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MINIMAX/USDT:USDT,MINIMAX-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1782285300000,2026-06-24T07:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MMT/USDT:USDT,MMT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762259401259,2025-11-04T12:30:01.259000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MON/USDT:USDT,MON-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760083200427,2025-10-10T08:00:00.427000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MOODENG/USDT:USDT,MOODENG-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1727938802849,2024-10-03T07:00:02.849000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MOONSHOT/USDT:USDT,MOONSHOT-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1786957200000,2026-08-17T09:00:00+00:00,live,pre_market,2026-11-13T16:00:30.323636+00:00
+MORPHO/USDT:USDT,MORPHO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1732528800980,2024-11-25T10:00:00.980000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MOVE/USDT:USDT,MOVE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1733749202646,2024-12-09T13:00:02.646000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MP/USDT:USDT,MP-USDT-SWAP,3,stock,MP Materials Corp. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792489500000,2026-10-20T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MPWR/USDT:USDT,MPWR-USDT-SWAP,3,stock,"Monolithic Power Systems, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793097900000,2026-10-27T10:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MRK/USDT:USDT,MRK-USDT-SWAP,3,stock,"Merck & Company, Inc. Common Stock (new)",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1787823000000,2026-08-27T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MRNA/USDT:USDT,MRNA-USDT-SWAP,3,stock,"Moderna, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787302800000,2026-08-21T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MRVL/USDT:USDT,MRVL-USDT-SWAP,3,stock,"Marvell Technology, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778581800000,2026-05-12T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MSFT/USDT:USDT,MSFT-USDT-SWAP,3,stock,Microsoft Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772611200000,2026-03-04T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MSTR/USDT:USDT,MSTR-USDT-SWAP,3,stock,Strategy Inc - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772013600000,2026-02-25T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MSTU/USDT:USDT,MSTU-USDT-SWAP,3,etf_etp,T-Rex 2X Long MSTR Daily Target ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790154000000,2026-09-23T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MU/USDT:USDT,MU-USDT-SWAP,3,stock,"Micron Technology, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772608500000,2026-03-04T07:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MUBARAK/USDT:USDT,MUBARAK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1748946600286,2025-06-03T10:30:00.286000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MURATA/USDT:USDT,MURATA-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1793770200000,2026-11-04T05:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MUU/USDT:USDT,MUU-USDT-SWAP,3,etf_etp,Direxion Daily MU Bull 2X ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782984600000,2026-07-02T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+MVLL/USDT:USDT,MVLL-USDT-SWAP,3,etf_etp,GraniteShares 2x Long MRVL Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782983700000,2026-07-02T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NAVER/USDT:USDT,NAVER-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1789537500000,2026-09-16T05:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NBIS/USDT:USDT,NBIS-USDT-SWAP,3,stock,Nebius Group N.V. - Class A Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779182100000,2026-05-19T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NEAR/USDT:USDT,NEAR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1608544800000,2020-12-21T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NEIRO/USDT:USDT,NEIRO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1727939701217,2024-10-03T07:15:01.217000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NEO/USDT:USDT,NEO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1582888608000,2020-02-28T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NES/USDT:USDT,NES-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1782307800000,2026-06-24T13:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NET/USDT:USDT,NET-USDT-SWAP,3,stock,"Cloudflare, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1786523400000,2026-08-12T08:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NFLX/USDT:USDT,NFLX-USDT-SWAP,3,stock,"Netflix, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NG/USDT:USDT,NG-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1773133200000,2026-03-10T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NIGHT/USDT:USDT,NIGHT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1765279800000,2025-12-09T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NKE/USDT:USDT,NKE-USDT-SWAP,3,stock,"Nike, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790935200000,2026-10-02T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NMR/USDT:USDT,NMR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1704959700642,2024-01-11T07:55:00.642000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NOK/USDT:USDT,NOK-USDT-SWAP,3,stock,Nokia Corporation Sponsored American Depositary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779878700000,2026-05-27T10:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NOT/USDT:USDT,NOT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1715862465350,2024-05-16T12:27:45.350000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NOW/USDT:USDT,NOW-USDT-SWAP,3,stock,"ServiceNow, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1780399800000,2026-06-02T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NVDA/USDT:USDT,NVDA-USDT-SWAP,3,stock,NVIDIA Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772607600000,2026-03-04T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NVDL/USDT:USDT,NVDL-USDT-SWAP,3,etf_etp,GraniteShares 2x Long NVDA Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787826600000,2026-08-27T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+NVO/USDT:USDT,NVO-USDT-SWAP,3,stock,Novo Nordisk A/S Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792659600000,2026-10-22T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+O/USDT:USDT,O-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1781713800000,2026-06-17T16:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OFC/USDT:USDT,OFC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1775732400000,2026-04-09T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OKB/USDT:USDT,OKB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1756951200395,2025-09-04T02:00:00.395000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OKLO/USDT:USDT,OKLO-USDT-SWAP,3,stock,Oklo Inc. Class A common stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1789982100000,2026-09-21T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OKTA/USDT:USDT,OKTA-USDT-SWAP,3,stock,"Okta, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1785402000000,2026-07-30T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OL/USDT:USDT,OL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761732900938,2025-10-29T10:15:00.938000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ON/USDT:USDT,ON-USDT-SWAP,3,stock,ON Semiconductor Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783329300000,2026-07-06T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ONDO/USDT:USDT,ONDO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1722940203957,2024-08-06T10:30:03.957000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ONDS/USDT:USDT,ONDS-USDT-SWAP,3,stock,Ondas Inc - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781604000000,2026-06-16T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ONE/USDT:USDT,ONE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1708426039038,2024-02-20T10:47:19.038000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ONT/USDT:USDT,ONT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OP/USDT:USDT,OP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1654055717137,2022-06-01T03:55:17.137000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OPENAI/USDT:USDT,OPENAI-USDT-SWAP,3,pre_ipo_equity,OpenAI,https://www.okx.com/en-gb/help/okx-to-list-pre-ipo-pre-market-perpetual-futures-for-spacex-usdt-openai-usdt-and-anthropic-usdt,1778145300000,2026-05-07T09:15:00+00:00,live,pre_market,2026-11-13T16:00:30.323636+00:00
+OPG/USDT:USDT,OPG-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1776934800000,2026-04-23T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OPN/USDT:USDT,OPN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1771847700000,2026-02-23T11:55:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ORCL/USDT:USDT,ORCL-USDT-SWAP,3,stock,Oracle Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ORDER/USDT:USDT,ORDER-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1759245300953,2025-09-30T15:15:00.953000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ORDI/USDT:USDT,ORDI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1684662900862,2023-05-21T09:55:00.862000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OSCR/USDT:USDT,OSCR-USDT-SWAP,3,stock,"Oscar Health, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1783332000000,2026-07-06T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OURA/USDT:USDT,OURA-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1790157600000,2026-09-23T10:00:00+00:00,live,pre_market,2026-11-13T16:00:30.323636+00:00
+OUST/USDT:USDT,OUST-USDT-SWAP,3,stock,"Ouster, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1786959000000,2026-08-17T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+OXY/USDT:USDT,OXY-USDT-SWAP,3,stock,Occidental Petroleum Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793781000000,2026-11-04T08:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PANW/USDT:USDT,PANW-USDT-SWAP,3,stock,"Palo Alto Networks, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1792662300000,2026-10-22T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PARTI/USDT:USDT,PARTI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1742909400471,2025-03-25T13:30:00.471000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PDD/USDT:USDT,PDD-USDT-SWAP,3,stock,PDD Holdings Inc. - American Depositary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793349000000,2026-10-30T08:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PENDLE/USDT:USDT,PENDLE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1758093984811,2025-09-17T07:26:24.811000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PENG/USDT:USDT,PENG-USDT-SWAP,3,stock,"Penguin Solutions, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783675800000,2026-07-10T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PENGU/USDT:USDT,PENGU-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1734450902264,2024-12-17T15:55:02.264000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PEOPLE/USDT:USDT,PEOPLE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1638427889758,2021-12-02T06:51:29.758000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PEP/USDT:USDT,PEP-USDT-SWAP,3,stock,"PepsiCo, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1793621700000,2026-11-02T12:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PEPE/USDT:USDT,PEPE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1683086101049,2023-05-03T03:55:01.049000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PFE/USDT:USDT,PFE-USDT-SWAP,3,stock,"Pfizer, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793351700000,2026-10-30T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PI/USDT:USDT,PI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1740042000388,2025-02-20T09:00:00.388000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PIEVERSE/USDT:USDT,PIEVERSE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1763263801177,2025-11-16T03:30:01.177000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PIPPIN/USDT:USDT,PIPPIN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1764687600000,2025-12-02T15:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PLTR/USDT:USDT,PLTR-USDT-SWAP,3,stock,Palantir Technologies Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772090100000,2026-02-26T07:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PLUME/USDT:USDT,PLUME-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1746689400330,2025-05-08T07:30:00.330000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PNUT/USDT:USDT,PNUT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1731382200304,2024-11-12T03:30:00.304000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+POET/USDT:USDT,POET-USDT-SWAP,3,stock,POET Technologies Inc. - Common Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781603100000,2026-06-16T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+POL/USDT:USDT,POL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1727166600128,2024-09-24T08:30:00.128000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PONS/USDT:USDT,PONS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1788577200000,2026-09-05T03:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+POPCAT/USDT:USDT,POPCAT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1724922000651,2024-08-29T09:00:00.651000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+POPMART/USDT:USDT,POPMART-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1786519800000,2026-08-12T07:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PROS/USDT:USDT,PROS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1777384800000,2026-04-28T14:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PROVE/USDT:USDT,PROVE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760700601003,2025-10-17T11:30:01.003000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PUMP/USDT:USDT,PUMP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1752514200381,2025-07-14T17:30:00.381000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PURR/USDT:USDT,PURR-USDT-SWAP,3,stock,Hyperliquid Strategies Inc - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787303700000,2026-08-21T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PYPL/USDT:USDT,PYPL-USDT-SWAP,3,stock,"PayPal Holdings, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1788426000000,2026-09-03T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+PYTH/USDT:USDT,PYTH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1700492100712,2023-11-20T14:55:00.712000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+QCOM/USDT:USDT,QCOM-USDT-SWAP,3,stock,QUALCOMM Incorporated - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1779183000000,2026-05-19T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+QNT/USDT:USDT,QNT-USDT-SWAP,3,stock,Quantinuum Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1780655400000,2026-06-05T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+QQQ/USDT:USDT,QQQ-USDT-SWAP,3,etf_etp,"Invesco QQQ Trust, Series 1",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772613900000,2026-03-04T08:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+QTUM/USDT:USDT,QTUM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+QUANT/USDT:USDT,QUANT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1790841600000,2026-10-01T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RAM/USDT:USDT,RAM-USDT-SWAP,3,etf_etp,Roundhill T-REX 2X Long DRAM Daily Target ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1782985500000,2026-07-02T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RAVE/USDT:USDT,RAVE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1765785600000,2025-12-15T08:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RAY/USDT:USDT,RAY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1710239100609,2024-03-12T10:25:00.609000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RDDT/USDT:USDT,RDDT-USDT-SWAP,3,stock,"Reddit, Inc. Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781776800000,2026-06-18T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RDW/USDT:USDT,RDW-USDT-SWAP,3,stock,Redwire Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1780305300000,2026-06-01T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RE/USDT:USDT,RE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1781692200000,2026-06-17T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RECALL/USDT:USDT,RECALL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1761819300976,2025-10-30T10:15:00.976000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RENDER/USDT:USDT,RENDER-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1723105800136,2024-08-08T08:30:00.136000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RESOLV/USDT:USDT,RESOLV-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1749565800438,2025-06-10T14:30:00.438000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RIOT/USDT:USDT,RIOT-USDT-SWAP,3,stock,"Riot Platforms, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1786522500000,2026-08-12T08:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RIVER/USDT:USDT,RIVER-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1767942000000,2026-01-09T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RIVN/USDT:USDT,RIVN-USDT-SWAP,3,stock,"Rivian Automotive, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781775000000,2026-06-18T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RKLB/USDT:USDT,RKLB-USDT-SWAP,3,stock,Rocket Lab Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778580900000,2026-05-12T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RLS/USDT:USDT,RLS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1764688500000,2025-12-02T15:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ROBO/USDT:USDT,ROBO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1772206200000,2026-02-27T15:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ROK/USDT:USDT,ROK-USDT-SWAP,3,stock,"Rockwell Automation, Inc. Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781256600000,2026-06-12T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RSR/USDT:USDT,RSR-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599646371000,2020-09-09T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RUM/USDT:USDT,RUM-USDT-SWAP,3,stock,RUM Group Inc. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1792486800000,2026-10-20T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+RVN/USDT:USDT,RVN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1619161200000,2021-04-23T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+S/USDT:USDT,S-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1737450000523,2025-01-21T09:00:00.523000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SAHARA/USDT:USDT,SAHARA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1750941000359,2025-06-26T12:30:00.359000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SAMSUNG/USDT:USDT,SAMSUNG-USDT-SWAP,3,stock,Samsung Electronics,https://www.okx.com/en-sg/help/okx-to-list-perpetual-futures-for-samsung-skhynix-and-hyundai-equities,1781070300000,2026-06-10T05:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SAND/USDT:USDT,SAND-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1617354000000,2021-04-02T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SAPIEN/USDT:USDT,SAPIEN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762429500524,2025-11-06T11:45:00.524000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SATS/USDT:USDT,SATS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1702889700612,2023-12-18T08:55:00.612000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SECZ/USDT:USDT,SECZ-USDT-SWAP,3,stock,Securitize Corp. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1790937000000,2026-10-02T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SEI/USDT:USDT,SEI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1763105401238,2025-11-14T07:30:01.238000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SENT/USDT:USDT,SENT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1763132401716,2025-11-14T15:00:01.716000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHAZ/USDT:USDT,SHAZ-USDT-SWAP,3,stock,"SharonAI Holdings, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783674000000,2026-07-10T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHEIN/USDT:USDT,SHEIN-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1788332400000,2026-09-02T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHELL/USDT:USDT,SHELL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1740657600557,2025-02-27T12:00:00.557000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHIB/USDT:USDT,SHIB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1620550800000,2021-05-09T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHLD/USDT:USDT,SHLD-USDT-SWAP,3,etf_etp,Global X Defense Tech ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778580000000,2026-05-12T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SHOP/USDT:USDT,SHOP-USDT-SWAP,3,stock,Shopify Inc. - Class A Subordinate Voting Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1786015800000,2026-08-06T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SIGN/USDT:USDT,SIGN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1745839800340,2025-04-28T11:30:00.340000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SIMO/USDT:USDT,SIMO-USDT-SWAP,3,stock,"Silicon Motion Technology Corporation - American Depositary Shares, each representing four ordinary shares",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783331100000,2026-07-06T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SKDD/USDT:USDT,SKDD-USDT-SWAP,3,etf_etp,GraniteShares 2x Short SK Hynix Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1786353300000,2026-08-10T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SKHY/USDT:USDT,SKHY-USDT-SWAP,3,stock,SK hynix Inc. - American Depositary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783699800000,2026-07-10T16:10:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SKHYNIX/USDT:USDT,SKHYNIX-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1781070600000,2026-06-10T05:50:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SKUU/USDT:USDT,SKUU-USDT-SWAP,3,etf_etp,GraniteShares 2x Long SK Hynix Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1786352400000,2026-08-10T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SKY/USDT:USDT,SKY-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1757590200404,2025-09-11T11:30:00.404000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SLX/USDT:USDT,SLX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1780291800000,2026-06-01T05:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SMCI/USDT:USDT,SMCI-USDT-SWAP,3,stock,"Super Micro Computer, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782294300000,2026-06-24T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SMH/USDT:USDT,SMH-USDT-SWAP,3,etf_etp,VanEck Semiconductor ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781773200000,2026-06-18T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SMR/USDT:USDT,SMR-USDT-SWAP,3,stock,NuScale Power Corporation Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793781900000,2026-11-04T08:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SNDK/USDT:USDT,SNDK-USDT-SWAP,3,stock,Sandisk Corporation - Common Stock When-Issued,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772609400000,2026-03-04T07:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SNOW/USDT:USDT,SNOW-USDT-SWAP,3,stock,Snowflake Inc. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1784287800000,2026-07-17T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SNX/USDT:USDT,SNX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1598004771000,2020-08-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SNXX/USDT:USDT,SNXX-USDT-SWAP,3,etf_etp,Tradr 2X Long SNDK Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1784030400000,2026-07-14T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOFI/USDT:USDT,SOFI-USDT-SWAP,3,stock,"SoFi Technologies, Inc.  - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1791969300000,2026-10-14T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOFTBANK/USDT:USDT,SOFTBANK-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1782970200000,2026-07-02T05:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOL/USDT:USDT,SOL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1611298800000,2021-01-22T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SONY/USDT:USDT,SONY-USDT-SWAP,3,stock,Sony Group Corporation American Depositary Shares ,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1782293400000,2026-06-24T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOON/USDT:USDT,SOON-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1747999800456,2025-05-23T11:30:00.456000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOPH/USDT:USDT,SOPH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1748439000413,2025-05-28T13:30:00.413000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOXL/USDT:USDT,SOXL-USDT-SWAP,3,etf_etp,Direxion Daily Semiconductor Bull 3X ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779181200000,2026-05-19T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SOXS/USDT:USDT,SOXS-USDT-SWAP,3,etf_etp,Direxion Daily Semiconductor Bear 3X ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1784278800000,2026-07-17T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPACE/USDT:USDT,SPACE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1769173200000,2026-01-23T13:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPCH/USDT:USDT,SPCH-USDT-SWAP,3,etf_etp,Leverage Shares 2X Long SPCX Daily ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1788336900000,2026-09-02T08:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPCX/USDT:USDT,SPCX-USDT-SWAP,3,stock,Space Exploration Technologies Corp. - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778144400000,2026-05-07T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPK/USDT:USDT,SPK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1750156200346,2025-06-17T10:30:00.346000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPX/USDT:USDT,SPX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1752728400453,2025-07-17T05:00:00.453000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SPY/USDT:USDT,SPY-USDT-SWAP,3,etf_etp,State Street SPDR S&P 500 ETF Trust,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1772614800000,2026-03-04T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SQQQ/USDT:USDT,SQQQ-USDT-SWAP,3,etf_etp,ProShares UltraPro Short QQQ,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1784031300000,2026-07-14T12:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SSV/USDT:USDT,SSV-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1700711700717,2023-11-23T03:55:00.717000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+STABLE/USDT:USDT,STABLE-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1765200600000,2025-12-08T13:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+STRC/USDT:USDT,STRC-USDT-SWAP,3,stock,Strategy Inc - Variable Rate Series A Perpetual Stretch Preferred Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782725400000,2026-06-29T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+STRK/USDT:USDT,STRK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1708433700141,2024-02-20T12:55:00.141000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+STX/USDT:USDT,STX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1676969758164,2023-02-21T08:55:58.164000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SUI/USDT:USDT,SUI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1683258900891,2023-05-05T03:55:00.891000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SUSHI/USDT:USDT,SUSHI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599041571000,2020-09-02T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+SYRUP/USDT:USDT,SYRUP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1751524200291,2025-07-03T06:30:00.291000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TAO/USDT:USDT,TAO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1726808400182,2024-09-20T05:00:00.182000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TEAM/USDT:USDT,TEAM-USDT-SWAP,3,stock,Atlassian Corporation  - Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1789983900000,2026-09-21T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TEM/USDT:USDT,TEM-USDT-SWAP,3,stock,"Tempus AI, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1789983000000,2026-09-21T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TER/USDT:USDT,TER-USDT-SWAP,3,stock,"Teradyne, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1781601300000,2026-06-16T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+THETA/USDT:USDT,THETA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TIA/USDT:USDT,TIA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1698776700675,2023-10-31T18:25:00.675000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TLT/USDT:USDT,TLT-USDT-SWAP,3,etf_etp,iShares 20+ Year Treasury Bond ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1791971100000,2026-10-14T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TMF/USDT:USDT,TMF-USDT-SWAP,3,etf_etp,Direxion Daily 20-Yr Treasury Bull 3x Shrs,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1785315600000,2026-07-29T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TQQQ/USDT:USDT,TQQQ-USDT-SWAP,3,etf_etp,ProShares UltraPro QQQ,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782982800000,2026-07-02T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRB/USDT:USDT,TRB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599559971000,2020-09-08T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRIA/USDT:USDT,TRIA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1770276600000,2026-02-05T07:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRUMP/USDT:USDT,TRUMP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1737264604112,2025-01-19T05:30:04.112000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRUST/USDT:USDT,TRUST-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762342200957,2025-11-05T11:30:00.957000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRUTH/USDT:USDT,TRUTH-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1764329400000,2025-11-28T11:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TRX/USDT:USDT,TRX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TSEM/USDT:USDT,TSEM-USDT-SWAP,3,stock,Tower Semiconductor Ltd. - Ordinary Shares,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782384300000,2026-06-25T10:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TSLA/USDT:USDT,TSLA-USDT-SWAP,3,stock,"Tesla, Inc.  - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1772010000000,2026-02-25T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TSLL/USDT:USDT,TSLL-USDT-SWAP,3,etf_etp,Direxion Daily TSLA Bull 2X ETF,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787825700000,2026-08-27T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TSM/USDT:USDT,TSM-USDT-SWAP,3,stock,Taiwan Semiconductor Manufacturing Company Ltd.,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1773223200000,2026-03-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TTMI/USDT:USDT,TTMI-USDT-SWAP,3,stock,"TTM Technologies, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782209700000,2026-06-23T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TTWO/USDT:USDT,TTWO-USDT-SWAP,3,stock,"Take-Two Interactive Software, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1783332900000,2026-07-06T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TURBO/USDT:USDT,TURBO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1702547700612,2023-12-14T09:55:00.612000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TWLO/USDT:USDT,TWLO-USDT-SWAP,3,stock,Twilio Inc. Class A Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1781254800000,2026-06-12T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TWST/USDT:USDT,TWST-USDT-SWAP,3,stock,Twist Bioscience Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1792490400000,2026-10-20T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+TXN/USDT:USDT,TXN-USDT-SWAP,3,stock,Texas Instruments Incorporated - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1791968400000,2026-10-14T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UB/USDT:USDT,UB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1777383000000,2026-04-28T13:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UMA/USDT:USDT,UMA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599214371000,2020-09-04T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UMC/USDT:USDT,UMC-USDT-SWAP,3,stock,United Microelectronics Corporation (NEW) Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793622600000,2026-11-02T12:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UNH/USDT:USDT,UNH-USDT-SWAP,3,stock,UnitedHealth Group Incorporated Common Stock (DE),https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1783333800000,2026-07-06T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UNI/USDT:USDT,UNI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1600317000000,2020-09-17T04:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UNITREE/USDT:USDT,UNITREE-USDT-SWAP,3,stock,Unitree,https://www.okx.com/de/help/okx-to-list-perpetual-futures-for-unitree-equity,1787116500000,2026-08-19T05:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UP/USDT:USDT,UP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1775646000000,2026-04-08T11:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+URNM/USDT:USDT,URNM-USDT-SWAP,3,etf_etp,Sprott Uranium Miners ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779354900000,2026-05-21T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+US100/USDT:USDT,US100-USDT-SWAP,3,index,,https://www.okx.com/en-ae/help/index-perpetuals,1789031700000,2026-09-10T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+US500/USDT:USDT,US500-USDT-SWAP,3,index,,https://www.okx.com/en-ae/help/index-perpetuals,1789030800000,2026-09-10T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+USAR/USDT:USDT,USAR-USDT-SWAP,3,stock,"USA Rare Earth, Inc. - Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1777298400000,2026-04-27T14:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+USDC/USDT:USDT,USDC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1678607700793,2023-03-12T07:55:00.793000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+USELESS/USDT:USDT,USELESS-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1753437600380,2025-07-25T10:00:00.380000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+USO/USDT:USDT,USO-USDT-SWAP,3,etf_etp,United States Oil Fund,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778493600000,2026-05-11T10:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+UVXY/USDT:USDT,UVXY-USDT-SWAP,3,etf_etp,ProShares Ultra VIX Short Term Futures ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1782291600000,2026-06-24T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+V/USDT:USDT,V-USDT-SWAP,3,stock,Visa Inc.,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792143000000,2026-10-16T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VANA/USDT:USDT,VANA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1734408000582,2024-12-17T04:00:00.582000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VICR/USDT:USDT,VICR-USDT-SWAP,3,stock,Vicor Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1791970200000,2026-10-14T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VIRTUAL/USDT:USDT,VIRTUAL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1733911200140,2024-12-11T10:00:00.140000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VRT/USDT:USDT,VRT-USDT-SWAP,3,stock,"Vertiv Holdings, LLC Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1779960600000,2026-05-28T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VST/USDT:USDT,VST-USDT-SWAP,3,stock,Vistra Corp. Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1792657800000,2026-10-22T08:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+VVV/USDT:USDT,VVV-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1783058400000,2026-07-03T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+W/USDT:USDT,W-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1712147100572,2024-04-03T12:25:00.572000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WAL/USDT:USDT,WAL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1746687600526,2025-05-08T07:00:00.526000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WCT/USDT:USDT,WCT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1744716600433,2025-04-15T11:30:00.433000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WDC/USDT:USDT,WDC-USDT-SWAP,3,stock,Western Digital Corporation - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1778582700000,2026-05-12T10:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WEN/USDT:USDT,WEN-USDT-SWAP,3,stock,Wendy's Company (The) - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1782383400000,2026-06-25T10:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WET/USDT:USDT,WET-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1765296000000,2025-12-09T16:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WIF/USDT:USDT,WIF-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1713173100603,2024-04-15T09:25:00.603000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WLD/USDT:USDT,WLD-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1690199721595,2023-07-24T11:55:21.595000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WLFI/USDT:USDT,WLFI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1755954000424,2025-08-23T13:00:00.424000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WMT/USDT:USDT,WMT-USDT-SWAP,3,stock,Walmart Inc. - Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1787823900000,2026-08-27T09:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WOO/USDT:USDT,WOO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1676357700337,2023-02-14T06:55:00.337000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+WUXIBIO/USDT:USDT,WUXIBIO-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1793343600000,2026-10-30T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XAG/USDT:USDT,XAG-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1769601600000,2026-01-28T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XAU/USDT:USDT,XAU-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1744192800563,2025-04-09T10:00:00.563000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XBI/USDT:USDT,XBI-USDT-SWAP,3,etf_etp,State Street SPDR S&P Biotech ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1784032200000,2026-07-14T12:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XCU/USDT:USDT,XCU-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1772625600000,2026-03-04T12:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XDP/USDT:USDT,XDP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1790604000000,2026-09-28T14:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XIAOMI/USDT:USDT,XIAOMI-USDT-SWAP,3,stock,Xiaomi,https://www.okx.com/en-br/help/okx-to-list-perpetual-futures-for-popmart-xiaomi-riot-and-net-equities,1786520700000,2026-08-12T07:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XLE/USDT:USDT,XLE-USDT-SWAP,3,etf_etp,State Street Energy Select Sector SPDR ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1778494500000,2026-05-11T10:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XLM/USDT:USDT,XLM-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XLV/USDT:USDT,XLV-USDT-SWAP,3,etf_etp,State Street Health Care Select Sector SPDR ETF,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1793955600000,2026-11-06T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XOM/USDT:USDT,XOM-USDT-SWAP,3,stock,ExxonMobil Holdings Corporation Common Stock,https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt,1789032600000,2026-09-10T09:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XPD/USDT:USDT,XPD-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1770012000000,2026-02-02T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XPL/USDT:USDT,XPL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1756378800384,2025-08-28T11:00:00.384000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XPT/USDT:USDT,XPT-USDT-SWAP,4,commodity,,https://www.okx.com/docs-v5/en/,1770013800000,2026-02-02T06:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XRP/USDT:USDT,XRP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1573557408000,2019-11-12T11:16:48+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+XTZ/USDT:USDT,XTZ-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1587463971000,2020-04-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+YB/USDT:USDT,YB-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760252400368,2025-10-12T07:00:00.368000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+YFI/USDT:USDT,YFI-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599041571000,2020-09-02T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+YGG/USDT:USDT,YGG-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1628240400000,2021-08-06T09:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZAMA/USDT:USDT,ZAMA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1767969000000,2026-01-09T14:30:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZBT/USDT:USDT,ZBT-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760700600342,2025-10-17T11:30:00.342000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZEC/USDT:USDT,ZEC-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762398900578,2025-11-06T03:15:00.578000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZEN/USDT:USDT,ZEN-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1762149601773,2025-11-03T06:00:01.773000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZETA/USDT:USDT,ZETA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1706757900607,2024-02-01T03:25:00.607000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZHIPU/USDT:USDT,ZHIPU-USDT-SWAP,3,stock_related_unverified,,https://www.okx.com/docs-v5/en/,1782284400000,2026-06-24T07:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZHONGJI/USDT:USDT,ZHONGJI-USDT-SWAP,3,stock,Zhongji Innolight,https://www.okx.com/en-eu/help/okx-to-list-perpetual-futures-for-jp225-and-zhongji-equities,1788933600000,2026-09-09T06:00:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZIL/USDT:USDT,ZIL-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1599646371000,2020-09-09T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZK/USDT:USDT,ZK-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1718699100579,2024-06-18T08:25:00.579000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZKP/USDT:USDT,ZKP-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1767793500000,2026-01-07T13:45:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZM/USDT:USDT,ZM-USDT-SWAP,3,stock,"Zoom Communications, Inc. - Class A Common Stock",https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt,1784279700000,2026-07-17T09:15:00+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZORA/USDT:USDT,ZORA-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1760095801229,2025-10-10T11:30:01.229000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZRO/USDT:USDT,ZRO-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1718886300653,2024-06-20T12:25:00.653000+00:00,live,normal,2026-11-13T16:00:30.323636+00:00
+ZRX/USDT:USDT,ZRX-USDT-SWAP,1,crypto,,https://www.okx.com/docs-v5/en/,1598004771000,2020-08-21T10:12:51+00:00,live,normal,2026-11-13T16:00:30.323636+00:00

@@ -244,6 +244,17 @@
       "sha256": "b67cfd55956119e90233898b62226060350cdfafad9bca8f9abbcec1d95b28c9",
       "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
       "date_utc": "2026-11-10T03:17:46Z"
+    },
+    {
+      "class": "NewListingShortHedged",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261113_155858",
+      "run_dir": "user_data/research/run_20261113_155858",
+      "commit": "fe432abe9566d6a5148fb578aac9bd0bcc58ba95",
+      "sha256": "8c7b07da4ffe88dc4b7dde872a5f95cb9a0aaec31d0d60b4706d6b83f852e032",
+      "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
+      "date_utc": "2026-11-13T16:13:10Z"
     }
   ],
   "results": [
@@ -332,6 +343,37 @@
       },
       "recorded": "2026-11-10",
       "report": "docs/research-runs/2026-11-10-round5-runA/README.md",
+      "note": "按预注册 3.1 节第 2 条和 6.4 节：不补救，不改参数重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
+    },
+    {
+      "class": "NewListingShortHedged",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261113_155858",
+      "run_dir": "user_data/research/run_20261113_155858",
+      "commit": "fe432abe9566d6a5148fb578aac9bd0bcc58ba95",
+      "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
+      "formal_run": true,
+      "verdict": "未通过",
+      "reasons": [
+        "训练段亏损 -4.65%，盈亏因子 0.81 < 1.2",
+        "没看过的一段（2021 ~ 2023）亏损 -3.26%，盈亏因子 0.77 < 1.2",
+        "走步拼接盈亏因子 1.11 < 1.2"
+      ],
+      "segments": {
+        "train": "2021-01-01~2024-11-28 -4.65% PF 0.81 回撤 12.36% 93 笔（新币空单 87 笔）",
+        "unseen": "2021-01-01~2023-12-31 -3.26% PF 0.77 回撤 6.94% 59 笔（新币空单 53 笔；2021 -5.29%、2022 -0.51%、2023 +2.54%）",
+        "oos": "2024-11-29~2026-11-13 +5.67% PF 1.35 回撤 3.59% 84 笔（新币空单 83 笔；通过）",
+        "walk_forward": "6 折拼接 +3.36% PF 1.11 回撤 6.73% 152 笔（新币空单 145 笔；每折 -1.29 / -0.98 / -0.29 / +0.49 / -1.56 / +7.22%）"
+      },
+      "extra_checks": {
+        "count_tags_exclude": "交易数不数对冲腿（hedge）：每段新币空单都 ≥ 30 笔",
+        "drop_top_days": "没登记，只报告：去掉盈利最多的 3 天后，没看过的一段 -3.26% → -8.63%（PF 0.39），样本外 +5.67% → +0.60%（PF 1.04）"
+      },
+      "universe": "2026-11-13 David 选择照登记的原样跑：OKX 全部 USDT 永续，包括 2025-04 起上线的非加密合约（股票、ETF、指数、商品等）。不通过的训练段和没看过的一段里一个非加密合约都没有（OKX 第一个非加密合约 XAU 2025-04-09 上线），这个选择不影响判定。",
+      "stage_2": "第一阶段不通过 = 失败，币安第二阶段不做（规格 2.4 节）",
+      "recorded": "2026-11-14",
+      "report": "docs/research-runs/2026-11-13-round5-runB/README.md",
       "note": "按预注册 3.1 节第 2 条和 6.4 节：不补救，不改参数重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
     }
   ]
