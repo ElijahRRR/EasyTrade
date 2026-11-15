@@ -157,7 +157,7 @@ def synthetic_panel(n_pairs: int = 40, start: str = "2019-06-01", end: str = "20
     freq = TF_FREQ[tf]
     idx = pd.date_range(start, end, freq=freq, tz="UTC", inclusive="left")
     n = len(idx)
-    scale = 1.0 if tf == "1d" else (1 / 6) ** 0.5
+    scale = (365.0 / TF_BARS[tf]) ** 0.5  # 1d = 1，4h = sqrt(1/6)，1h = sqrt(1/24)
     mkt = rng.standard_t(4, n) * 0.025 * scale
     beta = rng.uniform(0.7, 1.5, n_pairs)
     idio_vol = rng.uniform(0.02, 0.05, n_pairs) * scale
@@ -172,6 +172,15 @@ def synthetic_panel(n_pairs: int = 40, start: str = "2019-06-01", end: str = "20
         r = r + lr
     elif plant == "tsrev":
         r[1:] += -0.25 * eps[:-1]
+    elif plant == "ou":
+        # 每个币的"个币部分"围绕自己的中枢来回摆（均值回归，半衰期约 2 天），大盘部分缩小：网格 / 越跌越买类应当赚钱
+        per_day = TF_BARS[tf] / 365.0
+        kappa = 1 - 0.5 ** (1 / (2 * per_day))
+        dev = np.zeros(n_pairs)
+        for i in range(n):
+            d = -kappa * dev + eps[i]
+            r[i] = 0.3 * mkt[i] * beta + d
+            dev = dev + d
     logp = np.cumsum(r, axis=0) + np.log(rng.uniform(1, 100, n_pairs))[None, :]
     c = np.exp(logp)
     o = np.vstack([c[0:1], c[:-1]]) * np.exp(rng.normal(0, 0.001, (n, n_pairs)))
@@ -191,7 +200,7 @@ def synthetic_panel(n_pairs: int = 40, start: str = "2019-06-01", end: str = "20
         for f in frames:
             f.iloc[:cut, j] = np.nan
     O, H, L, C, V = frames
-    fr = pd.DataFrame(rng.normal(0.0001, 0.0002, (n, n_pairs)) * (3 if tf == "1d" else 0.5), index=idx, columns=cols)
+    fr = pd.DataFrame(rng.normal(0.0001, 0.0002, (n, n_pairs)) * (3 * 365.0 / TF_BARS[tf]), index=idx, columns=cols)
     known = pd.DataFrame(True, index=idx, columns=cols)
     return Panel(tf=tf, o=O, h=H, l=L, c=C, v=V, dv=C * V, funding=fr, funding_known=known,
                  bars_per_year=TF_BARS[tf], notes=[f"合成数据（plant={plant}，seed={seed}）"])

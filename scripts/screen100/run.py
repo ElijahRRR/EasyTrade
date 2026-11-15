@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -55,6 +56,19 @@ def code_hashes() -> dict:
 
 def load_cfg(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def use_catalog(cfg: dict) -> None:
+    """配置里的 "catalog" 可以换成别的策略目录（第 7 轮 = catalog7）。不写 = 第 6 轮的 catalog.py，行为不变。
+    换了目录时：对冲类名单用目录模块里的 NEUTRAL，配置里的 "lock_files" 也算进锁定的文件。"""
+    global CAT, CAT_BY_ID, NEUTRAL, LOCK_FILES
+    name = cfg.get("catalog", "catalog")
+    if name == "catalog":
+        return
+    CAT = importlib.import_module(name)
+    CAT_BY_ID = {x["id"]: x for x in CAT.STRATEGIES}
+    NEUTRAL = set(getattr(CAT, "NEUTRAL", set()))
+    LOCK_FILES = LOCK_FILES + [f for f in cfg.get("lock_files", []) if f not in LOCK_FILES]
 
 
 def git_commit() -> str:
@@ -205,7 +219,7 @@ def main(argv=None) -> int:
     ap.add_argument("--only", default=None, help="只跑这些编号（空格分隔），不算正式运行")
     ap.add_argument("--jobs", type=int, default=0, help="并行进程数（默认 = CPU 核数）")
     ap.add_argument("--out", default=None)
-    ap.add_argument("--synthetic", default=None, choices=["none", "xsmom", "tsrev"], help="用合成数据（自检用）")
+    ap.add_argument("--synthetic", default=None, choices=["none", "xsmom", "tsrev", "ou"], help="用合成数据（自检用）")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--self-test", action="store_true", help="合成数据自检（纯随机 + 植入截面动量各跑一次）")
     ap.add_argument("--allow-unlocked", action="store_true", help="代码和锁定的 sha256 不一致也跑（不算正式运行）")
@@ -214,6 +228,7 @@ def main(argv=None) -> int:
     os.chdir(ROOT)
     cfg_path = Path(a.config)
     cfg = load_cfg(cfg_path)
+    use_catalog(cfg)
     if a.lock:
         cfg["locked_sha256"] = code_hashes()
         cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -233,7 +248,7 @@ def run(a, cfg, quiet=False) -> int:
     locked = cfg.get("locked_sha256") or {}
     diff = [f for f in LOCK_FILES if locked.get(f) != hashes[f]]
     if diff and not a.synthetic:
-        msg = "代码和 configs/screen100.json 里锁定的 sha256 不一致：" + " ".join(diff)
+        msg = f"代码和 {a.config} 里锁定的 sha256 不一致：" + " ".join(diff)
         if not a.allow_unlocked:
             print("!! " + msg + "\n   正式运行必须用锁定的版本（git pull 到锁定的提交）。只是试跑：加 --allow-unlocked", file=sys.stderr)
             return 4
@@ -264,9 +279,13 @@ def run(a, cfg, quiet=False) -> int:
             fdirs.append(fd)
         for tf in tfs:
             panels[tf] = load_panel(datadir, pairs, tf, start - warm, None, fdirs)
-    # 结束 = 日线数据最后一根完整K线之后（所有周期统一）
-    p1d = panels["1d"]
-    end = p1d.c.dropna(how="all").index.max() + pd.Timedelta(days=1)
+    # 结束 = 日线数据最后一根完整K线之后（所有周期统一）。目录里没有日线策略时用最粗的那个周期，取到最后一个完整的自然日
+    if "1d" in panels:
+        p1d = panels["1d"]
+        end = p1d.c.dropna(how="all").index.max() + pd.Timedelta(days=1)
+    else:
+        p1d = panels[max(panels, key=lambda k: -panels[k].bars_per_year)]
+        end = (p1d.c.dropna(how="all").index.max() + pd.Timedelta(hours=1)).floor("D")
     for tf, P in panels.items():
         notes.extend(f"[{tf}] {n}" for n in P.notes)
     sg = segments(start, end, cfg["wf_folds"], cfg["wf_train_days"], cfg["wf_test_days"])
@@ -355,7 +374,10 @@ def run(a, cfg, quiet=False) -> int:
         n_eff = float(lam.sum() ** 2 / (lam ** 2).sum())
     else:
         n_eff = float(max(live.shape[1], 1))
-    n_strict = max(len(daily_cols), 1)
+    # 以前的轮次已经试过的策略也要算进"一共挑了多少个"（配置 gate.prior_strategies / gate.prior_n_eff，默认 0）
+    n_prior = int(cfg["gate"].get("prior_strategies", 0))
+    n_eff += float(cfg["gate"].get("prior_n_eff", 0))
+    n_strict = max(len(daily_cols), 1) + n_prior
     var_sr = 1.0 / max(T_days - 1, 1)
     sr0 = E.expected_max_sr(var_sr, n_strict)
     sr0_eff = E.expected_max_sr(var_sr, max(int(round(n_eff)), 1))
@@ -386,11 +408,11 @@ def run(a, cfg, quiet=False) -> int:
         "start": str(start.date()), "end": str((end - pd.Timedelta(days=1)).date()),
         "split": str(sg["split"].date()),
         "segments": {k: [str(v[0].date()), str(v[1].date())] for k, v in sg["seg"].items()},
-        "pairs": p1d.pairs, "n_trials": n_trials, "n_strategies": n_strict, "n_eff": n_eff,
+        "pairs": p1d.pairs, "n_trials": n_trials, "n_strategies": n_strict, "n_prior": n_prior, "n_eff": n_eff,
         "wf_days": T_days, "sr0_daily": sr0, "sr0_annual": sr0 * math.sqrt(365), "sr0_eff_annual": sr0_eff * math.sqrt(365), "notes": notes, "errors": [(e["sid"], e["ci"], e["error"]) for e in errors],
         "secs": time.time() - t_start, "utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    out = Path(a.out) if a.out else ROOT / "user_data/research/screen100" / (
+    out = Path(a.out) if a.out else ROOT / cfg.get("out_dir", "user_data/research/screen100") / (
         ("synthetic_" if a.synthetic else "") + "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"))
     out.mkdir(parents=True, exist_ok=True)
     write_outputs(out, rows, meta, daily_cols, cfg)
@@ -443,13 +465,14 @@ VERDICT_ZH = {"PASS": "通过", "EDGE": "边缘", "LUCK": "像运气", "FAIL": "
 def summary_text(rows, meta, daily, cfg) -> str:
     g = cfg["gate"]
     L = []
-    L.append("第 6 轮：100 个候选策略快速初筛" + ("" if meta["formal"] else "（!! 不是正式运行）"))
+    L.append(cfg.get("title", "第 6 轮：100 个候选策略快速初筛") + ("" if meta["formal"] else "（!! 不是正式运行）"))
     L.append(f"数据 {meta['start']} ~ {meta['end']}，{len(meta['pairs'])} 个币；训练段到 {meta['split']}，之后是样本外；"
              f"走步 {sum(1 for k in meta['segments'] if k.endswith('_te'))} 折（训练 {cfg['wf_train_days']} 天 / 测试 {cfg['wf_test_days']} 天）")
     L.append(f"手续费+滑点每边 {cfg['settings']['fee'] * 100:.2f}%，总杠杆 ≤ {cfg['settings']['gross_max']:g}x，"
              f"回撤上限 {g['max_dd'] * 100:g}%（含浮亏），PF 门槛 {g['min_pf']:g}（多空对冲类 {g['min_pf_neutral']:g}），"
              f"≥ {g['min_trades']} 笔")
-    L.append(f"多重检验：{meta['n_strategies']} 个策略（{meta['n_trials']} 组参数，参数在各折训练窗口里挑）。走步 {meta['wf_days']} 天里，"
+    prior = f"，其中 {meta['n_prior']} 个是以前的轮次试过的" if meta.get("n_prior") else ""
+    L.append(f"多重检验：{meta['n_strategies']} 个策略{prior}（这次 {meta['n_trials']} 组参数，参数在各折训练窗口里挑）。走步 {meta['wf_days']} 天里，"
              f"{meta['n_strategies']} 个毫无优势的策略中最好那个的年化夏普期望约 {meta['sr0_annual']:.2f}；"
              f"Deflated Sharpe ≥ {g['min_dsr']:g} 才算通过。")
     L.append(f"  宽松口径（只用来标“边缘”）：策略之间互相相关，约等于 {meta['n_eff']:.0f} 个独立试验，运气门槛年化夏普约 {meta['sr0_eff_annual']:.2f}")
@@ -511,16 +534,20 @@ def self_test(a, cfg) -> int:
         if nerr:
             for e in meta["errors"][:10]:
                 print("   ", e)
-    print("自检 2/2：植入截面动量的合成行情 → X01 截面动量应当通过", flush=True)
-    a2 = argparse.Namespace(**{**vars(a), "synthetic": "xsmom", "only": a.only or "X01 X02 X03 X14 T01 M02 A101",
-                               "out": None})
+    # 第二步：植入一种规律，该抓到的要抓到、方向相反的不能通过。别的目录可以用 SELF_TEST 换成自己的（第 7 轮见 catalog7.py）
+    t2 = getattr(CAT, "SELF_TEST", None) or {
+        "plant": "xsmom", "label": "植入截面动量的合成行情 → X01 截面动量应当通过",
+        "only": "X01 X02 X03 X14 T01 M02 A101", "must_pass": "X01", "must_not_pass": "X03"}
+    print(f"自检 2/2：{t2['label']}", flush=True)
+    a2 = argparse.Namespace(**{**vars(a), "synthetic": t2["plant"], "only": a.only or t2["only"], "out": None})
     run(a2, cfg, quiet=True)
     rows = G["last_rows"]
-    x01 = next(r for r in rows if r["id"] == "X01")
-    x03 = next(r for r in rows if r["id"] == "X03")
-    print(f"  X01 {VERDICT_ZH[x01['verdict']]}（走步夏普 {fmt(x01['wf'].get('sharpe'))}，DSR {x01['dsr']:.2f}）；"
-          f"X03 短期反转 {VERDICT_ZH[x03['verdict']]}（走步夏普 {fmt(x03['wf'].get('sharpe'))}）")
-    if x01["verdict"] != "PASS" or x03["verdict"] == "PASS":
+    x01 = next(r for r in rows if r["id"] == t2["must_pass"])
+    x03 = next(r for r in rows if r["id"] == t2["must_not_pass"])
+    good = ("PASS",) if not t2.get("pass_ok") else tuple(t2["pass_ok"])
+    print(f"  {x01['id']} {VERDICT_ZH[x01['verdict']]}（走步夏普 {fmt(x01['wf'].get('sharpe'))}，DSR {x01['dsr']:.2f}）；"
+          f"{x03['id']} {VERDICT_ZH[x03['verdict']]}（走步夏普 {fmt(x03['wf'].get('sharpe'))}）")
+    if x01["verdict"] not in good or x03["verdict"] == "PASS":
         ok = False
     print("自检" + ("通过" if ok else "失败"))
     return 0 if ok else 1

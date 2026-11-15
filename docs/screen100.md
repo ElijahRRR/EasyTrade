@@ -19,6 +19,7 @@ make screen100              # 真实数据：user_data/data/okx 里已经下载�
   `results.json`（每个策略每段的全部指标）、`wf_daily_returns.csv`（每个策略走步拼接的日收益，组合检查用）。
   请把整个目录打包发回来（`zip -r screen100.zip user_data/research/screen100/run_<时间>`）。
 - 代码和门槛已经锁定（`configs/screen100.json` 的 `locked_sha256`），和锁定版本不一致会拒绝运行（退出码 4）。
+  2026-11-15 为了让第 7 轮（[round7-promoted.md](round7-promoted.md)）复用引擎，`run.py` 和 `data.py` 加了几个配置项，不写这些配置项时行为不变，`locked_sha256` 按新代码重新锁定；第 6 轮正式结果对应的仍是当时的提交 `2a80d3b`。
 
 ## 做法
 

@@ -895,6 +895,24 @@ make screen100            # 用已经下载的 OKX 1d/4h 数据，几分钟；�
 make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--strategies 'DualThrustTrend BollingerBreakout ChandelierBreakout' --no-download"
 ```
 
+结果（2026-11-15）：3 个全部未通过，这一类到此为止（[记录](docs/research-runs/2026-11-14-round6-retest/README.md)）。
+
+## 第 7 步：最近一年被推广的策略
+
+David 2026-11-15 要求“继续查找最近一年的所有被推广的策略”。查到 30 条（清单和来源见
+[docs/round7-promoted.md](docs/round7-promoted.md)），其中现有数据能测、前六轮没测过的有 6 条：
+AdaptiveTrend（论文）、流动性扫荡（ICT）、多指标打分、网格、马丁格尔、资金费率套利。前 5 条写进了初筛工具
+（`scripts/screen100/catalog7.py`，AdaptiveTrend 分 4 小时和日线两个版本，一共 6 个候选），门槛和第 6 轮一样；
+资金费率套利对冲以后没有价格盈亏，单独算每年净收益。
+
+```bash
+make screen7-selftest   # 合成数据自检，约 2 分钟
+make screen7            # 6 个候选初筛，结果在 user_data/research/screen7/run_<时间>/
+make carry7             # 资金费率套利逐年净收益，结果在 user_data/research/screen7/carry_<时间>.txt
+```
+
+初筛通过的只算“值得改写成 freqtrade 版正式复核”（1 小时策略在初筛里只按收盘价近似），不是可以上实盘。
+
 ## 用合成数据自检（不联网）
 
 在连不上交易所的机器上（或者改完配置/策略想快速确认"有没有改坏"），可以用**随机生成的合成行情**把整条流程跑一遍：
