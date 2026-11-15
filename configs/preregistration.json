@@ -349,6 +349,39 @@
       "sha256": "8c7b07da4ffe88dc4b7dde872a5f95cb9a0aaec31d0d60b4706d6b83f852e032",
       "registry_sha256": "89dc750f269fb993fef571023dda2db4502e36d859361c7aa18e4d86f794e776",
       "date_utc": "2026-11-13T16:13:10Z"
+    },
+    {
+      "class": "DualThrustTrend",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "sha256": "f3c948b7d119765a390a597efc2e965ad7b6d7d3d1268ba095a7cd5fd7ca3f42",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "date_utc": "2026-11-14T10:18:03Z"
+    },
+    {
+      "class": "BollingerBreakout",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "sha256": "36f087ead081f65022b54a0c23314a7037d727f3e68fe9dfcf65a4fb7f14b041",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "date_utc": "2026-11-14T10:18:03Z"
+    },
+    {
+      "class": "ChandelierBreakout",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "sha256": "1dda2f906fb7793463d29c4077e94a482e32cf4430ec260229540dd49c07e003",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "date_utc": "2026-11-14T10:18:03Z"
     }
   ],
   "results": [
@@ -469,6 +502,88 @@
       "recorded": "2026-11-14",
       "report": "docs/research-runs/2026-11-13-round5-runB/README.md",
       "note": "按预注册 3.1 节第 2 条和 6.4 节：不补救，不改参数重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
+    },
+    {
+      "class": "DualThrustTrend",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "formal_run": true,
+      "verdict": "未通过",
+      "reasons": [
+        "样本外亏损 -6.46%，盈亏因子 0.78 < 1.2",
+        "训练段和没看过的一段回撤 33.56% > 15%",
+        "样本外明显退化：盈亏因子 训练 2.52 → 样本外 0.78",
+        "走步拼接盈亏因子 1.12 < 1.2"
+      ],
+      "segments": {
+        "train": "2021-01-01~2024-11-29 +83.96% PF 2.52 回撤 33.56% 239 笔",
+        "unseen": "2021-01-01~2023-12-31 +73.93% PF 3.04 回撤 33.56% 186 笔（2021 +33.39%、2022 +3.83%、2023 +36.71%）",
+        "oos": "2024-11-30~2026-11-13 -6.46% PF 0.78 回撤 12.85% 130 笔",
+        "walk_forward": "6 折拼接 +5.45% PF 1.12 回撤 12.59% 183 笔（每折 -4.09 / -2.63 / +9.95 / +2.96 / -1.74 / +1.52%）",
+        "pre_holdout": "2020-04-30~2020-12-31 +10.89% PF 2.33 回撤 8.87% 33 笔（赚钱、回撤达标）"
+      },
+      "recorded": "2026-11-15",
+      "report": "docs/research-runs/2026-11-14-round6-retest/README.md",
+      "note": "第 6 轮复核（docs/round6-retest.md 第 6 节）：0 个通过，这一类到此为止，不调参数、不改规则重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
+    },
+    {
+      "class": "BollingerBreakout",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "formal_run": true,
+      "verdict": "未通过",
+      "reasons": [
+        "样本外亏损 -3.52%，盈亏因子 0.88 < 1.2",
+        "样本外明显退化：盈亏因子 训练 1.82 → 样本外 0.88",
+        "走步拼接盈亏因子 1.03 < 1.2"
+      ],
+      "segments": {
+        "train": "2021-01-01~2024-11-29 +48.07% PF 1.82 回撤 14.14% 212 笔",
+        "unseen": "2021-01-01~2023-12-31 +53.26% PF 2.42 回撤 13.98% 148 笔（2021 +20.03%、2022 +3.71%、2023 +29.52%）",
+        "oos": "2024-11-30~2026-11-13 -3.52% PF 0.88 回撤 10.95% 108 笔",
+        "walk_forward": "6 折拼接 +1.46% PF 1.03 回撤 12.27% 169 笔（每折 -2.24 / +3.93 / +2.15 / -0.82 / -2.99 / +1.59%）",
+        "pre_holdout": "2020-07-19~2020-12-31 +11.11% PF 4.89 回撤 8.86% 16 笔（不足 30 笔：只报告）"
+      },
+      "recorded": "2026-11-15",
+      "report": "docs/research-runs/2026-11-14-round6-retest/README.md",
+      "note": "第 6 轮复核（docs/round6-retest.md 第 6 节）：0 个通过，这一类到此为止，不调参数、不改规则重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
+    },
+    {
+      "class": "ChandelierBreakout",
+      "stage": "1",
+      "venue": "okx",
+      "run_id": "run_20261114_101751",
+      "run_dir": "user_data/research/run_20261114_101751",
+      "commit": "f8fbbf475850847707b7ffdf1f4fc3c7e65f4280",
+      "registry_sha256": "b32fa97a8d9f8c7fc56a9a514c78487fd4f70c7678eb37f3a80c337665d79ad2",
+      "formal_run": true,
+      "verdict": "未通过",
+      "reasons": [
+        "训练段和没看过的一段回撤 16.62% > 15%",
+        "走步拼接回撤 17.30% > 15%",
+        "走步拼接盈亏因子 1.09 < 1.2"
+      ],
+      "segments": {
+        "train": "2021-01-01~2024-11-29 +12.46% PF 1.23 回撤 16.62% 251 笔",
+        "unseen": "2021-01-01~2023-12-31 +7.95% PF 1.21 回撤 16.62% 193 笔（2021 -2.57%、2022 -1.62%、2023 +12.13%）",
+        "oos": "2024-11-30~2026-11-13 +6.16% PF 1.22 回撤 9.85% 96 笔（这一段单看是通过的）",
+        "walk_forward": "6 折拼接 +3.68% PF 1.09 回撤 17.30% 174 笔（每折 -5.84 / -2.43 / +5.91 / +0.39 / -0.96 / +7.17%）",
+        "pre_holdout": "2020-07-19~2020-12-31 +5.64% PF 2.18 回撤 9.61% 19 笔（不足 30 笔：只报告）"
+      },
+      "extra_checks": {
+        "drop_top_days": "没登记，只报告：去掉盈利最多的 3 天后，没看过的一段 +7.95% → -6.56%，样本外 +6.16% → -4.33%"
+      },
+      "recorded": "2026-11-15",
+      "report": "docs/research-runs/2026-11-14-round6-retest/README.md",
+      "note": "第 6 轮复核（docs/round6-retest.md 第 6 节）：0 个通过，这一类到此为止，不调参数、不改规则重跑；以后的改动只能换新类名，在同一段历史上的结果只当参考。"
     }
   ]
 }

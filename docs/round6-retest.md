@@ -65,3 +65,10 @@ make research RESEARCH_PRE_HOLDOUT=20200101-20201231 ARGS="--strategies 'DualThr
 - 0 个通过：这一类策略到此为止，不调参数、不改规则重跑（和第 5 轮 3.5 节一样）。
 - 有通过的：只算“可以上模拟盘”，1 倍 ~ 2 倍杠杆、最小资金，模拟盘跑满 2 ~ 3 个月再决定要不要上实盘；
   T21 和 T08 都通过时只上一个（训练段收益 / 回撤比更高的那个）。
+
+## 7. 结果（2026-11-15 记录）
+
+正式运行 `run_20261114_101751`（commit `f8fbbf4`）：**3 个全部未通过**。DualThrustTrend、BollingerBreakout 样本外亏钱
+（-6.46% / PF 0.78，-3.52% / PF 0.88）；ChandelierBreakout 训练段和走步回撤 16.6% / 17.3% 超标、走步盈亏因子 1.09。
+2020 留出段三个都赚钱，但前两个的利润集中在 2020 ~ 2021 和 2023 年，2024 年以后没有优势。按第 6 节：这一类到此为止，不重跑。
+原始输出和分析：[research-runs/2026-11-14-round6-retest](research-runs/2026-11-14-round6-retest/README.md)。
