@@ -425,8 +425,12 @@ def test_prereg_funding_archive(tmp: Path, repo: Path, prereg: Any, run: Any, ok
             rc, r = xrun("x_real_runs")
             check("真实登记表 formal_runs 里有 XSFundingCarry → 再跑是重复运行，不是正式运行（不拒绝）",
                   (rc, r.get("formal_run"), bool((r.get("strategies") or {}).get(X, {}).get("formal_repeat"))), (0, False, True))
-        if "PremiumFade" not in done:
-            rc, r = run("p_real_runs")
+        rc, r = run("p_real_runs")
+        if "PremiumFade" in done:  # 2026-11-10 运行 A 以后：PremiumFade 的记录 stage 是 null（只有一个阶段），也要认得出来
+            check("真实登记表 formal_runs 里有 PremiumFade（stage 是 null）→ 再跑是重复运行，不是正式运行（不拒绝）",
+                  (rc, r.get("formal_run"), bool((r.get("strategies") or {}).get("PremiumFade", {}).get("formal_repeat"))),
+                  (0, False, True))
+        else:
             check("真实登记表 formal_runs 只记了别的类 → PremiumFade 照常是正式运行", (rc, r.get("formal_run")), (0, True))
         reg_path.write_text(orig_reg, encoding="utf-8")
         _git(repo, "add", "-A")
