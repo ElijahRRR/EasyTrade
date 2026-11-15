@@ -93,6 +93,25 @@ okx-funding-status:  ## 运行 C：看 user_data/data/okx-funding 的资金费�
 okx-funding-check:  ## 只跑资金费归档导入的自检（假的 HTTP 层 + 合成数据的端到端回测，不联网，约半分钟；make guard-test 里也有；ARGS="--no-e2e" 只要几秒）
 	@source scripts/_common.sh; py_ft scripts/check_okx_funding_archive.py $(ARGS)
 
+# ---------- 第 6 轮：100 个候选策略快速初筛（docs/screen100.md） ----------
+.PHONY: screen100 screen100-selftest
+screen100:  ## 第 6 轮：100 个候选策略快速初筛（向量化，用已下载的 OKX 1d/4h 数据，几分钟；训练段挑参数 → 样本外 + 走步 + 多重检验；ARGS="--only 'T01 X01'" 只跑几个、不算正式）
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py $(ARGS)
+
+screen100-selftest:  ## 第 6 轮初筛自检（合成数据，不联网，约 1 分钟）：纯随机行情应当 0 个通过，植入截面动量应当抓到
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py --self-test $(ARGS)
+
+# ---------- 第 7 轮：最近一年被推广的 6 个新候选（docs/round7-promoted.md） ----------
+.PHONY: screen7 screen7-selftest carry7
+screen7:  ## 第 7 轮：最近一年被推广、现有数据能测的 6 个新候选初筛（AdaptiveTrend、流动性扫荡、多指标打分、网格、马丁格尔；用已下载的 OKX 1h/4h/1d 数据，几分钟；门槛和第 6 轮一样）
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py --config configs/screen7.json $(ARGS)
+
+screen7-selftest:  ## 第 7 轮初筛自检（合成数据，不联网，约 2 分钟）：纯随机行情应当 0 个通过，植入均值回归时网格应当通过、趋势不应当通过
+	@source scripts/_common.sh; py_ft scripts/screen100/run.py --config configs/screen7.json --self-test $(ARGS)
+
+carry7:  ## 第 7 轮附带：资金费率套利（现货多 + 永续空）逐年净收益估算（用 user_data/data/okx-funding 的资金费归档；不是回测，是算账）
+	@source scripts/_common.sh; py_ft scripts/screen100/carry7.py $(ARGS)
+
 research-benchmarks:  ## 基准策略研究：别人公开的策略（freqtrade-strategies、NFI）用同一套流程比较，只用默认参数（先 bash scripts/fetch_benchmarks.sh；见 docs/benchmarks.md）
 	bash scripts/research_benchmarks.sh $(ARGS)
 
